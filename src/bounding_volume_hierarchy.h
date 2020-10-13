@@ -42,9 +42,10 @@ public:
     std::array<glm::vec3, 3> &getTriangle();
     Sphere& getSphere();
 
-    BvhObject operator=(BvhObject other);
+    // after calling the this function, the ids of the further declared objects will start again at 0.
+    static void resetIdGenerator();
 
-    private :
+private:
     // default constructor, called by all of the public constructor
 
     // the type of the object, either triangle or sphere
@@ -65,7 +66,6 @@ public:
 
 struct Node
 {
-    static unsigned long long id;
 
     // ctr
     // takes a vector with all the BvhObjects in it's subtree. Used to construct the AABB
@@ -88,9 +88,13 @@ struct Node
 
     AxisAlignedBox _boundingBox;
 
+    // after calling the this function, the ids of the further declared nodes will start again at 0.
+    static void resetIdGenerator();
+
 private:
     void updateAABB(AxisAlignedBox& other);
 
+    static unsigned long long id;
 
     bool _isLeaf;
 

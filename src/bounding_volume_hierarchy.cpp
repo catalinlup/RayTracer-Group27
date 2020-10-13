@@ -7,6 +7,10 @@ unsigned long long BvhObject::id = 0;
 BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
     : m_pScene(pScene)
 {
+    // reset the node and BvhObject reference ids;
+
+    Node::resetIdGenerator();
+    BvhObject::resetIdGenerator();
 
     // as an example of how to iterate over all meshes in the scene, look at the intersect method below
 
@@ -63,6 +67,11 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
         node_level_queue.push(std::make_pair(node_left_id, level + 1));
         node_level_queue.push(std::make_pair(node_right_id, level + 1));
     }
+
+    // for debugging only
+    //printHierarchy();
+
+    
 }
 
 unsigned long long BoundingVolumeHierarchy::createNode(std::vector<unsigned long long>& bvhObjectIds, unsigned int level) {
@@ -70,6 +79,9 @@ unsigned long long BoundingVolumeHierarchy::createNode(std::vector<unsigned long
     bool isLeaf = (bvhObjectIds.size() <= 1 || _max_level == level) ? true : false;
 
     std::vector<BvhObject> objects = getMapValuesOfKeys(bvhObjects, bvhObjectIds);
+
+    
+
     Node n = Node(objects, isLeaf);
 
     // if the node is a leaf node, add references to the objects
@@ -195,7 +207,7 @@ std::array<std::vector<unsigned long long>, 2> BoundingVolumeHierarchy::medianSp
 
 int BoundingVolumeHierarchy::numLevels() const
 {
-    return _max_level_achieved;
+    return _max_level_achieved + 1;
 }
 
 // Return true if something is hit, returns false otherwise. Only find hits if they are closer than t stored
@@ -223,13 +235,36 @@ bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo) const
     return hit;
 }
 
+// prints a textual representation of the hierarchy
+void BoundingVolumeHierarchy::printHierarchy() {
+    std::cout << "View per level" << std::endl;
+    std::cout << "----\n\n" << std::endl;
+
+    for(int i = 0; i <= _max_level_achieved; i++) {
+        std::vector<unsigned long long> ids = nodes_at_level[i];
+
+        std::cout << "Level " << i << std:: endl;
+
+        for(const auto& id : ids) {
+            std::cout << "Node " << id << std::endl;
+            std::vector<unsigned long long> objs = objects_at_node[id];
+            for(const auto& obj_id : objs) {
+                std::cout << obj_id << " ";
+            }
+            std::cout << std::endl;
+        }
+
+        std::cout << std::endl;
+        std::cout << std::endl;
+    }
+
+}
 
 // BvhObject Implementation
 
 
 //ctr default
 BvhObject::BvhObject() {
-    // generate id foe the object
     
 
 }
@@ -306,8 +341,10 @@ unsigned long long BvhObject::getId() {
     return _id;
 }
 
-
-
+// after calling the this function, the ids of the further declared objects will start again at 0.
+void BvhObject::resetIdGenerator() {
+    BvhObject::id = 0;
+}
 
 // Node Implementation
 
@@ -377,6 +414,12 @@ void Node::updateAABB(AxisAlignedBox& other) {
 
 unsigned long long Node::getId() {
     return _id;
+}
+
+// after calling the this function, the ids of the further declared ndoes will start again at 0.
+void Node::resetIdGenerator()
+{
+    Node::id = 0;
 }
 
 // Utility functions to get all keys and all values from a map
