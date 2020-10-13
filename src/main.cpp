@@ -6,6 +6,7 @@
 #include "screen.h"
 #include "trackball.h"
 #include "window.h"
+
 // Disable compiler warnings in third-party code (which we cannot change).
 DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
@@ -41,8 +42,22 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 {
     HitInfo hitInfo;
     if (bvh.intersect(ray, hitInfo)) {
-        // Draw a white debug ray.
-        drawRay(ray, glm::vec3(1.0f));
+        glm::vec3 color(0);
+
+        for (const auto& light : scene.pointLights) {
+            //(Hit and light)
+            glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
+            //(Reflection of incoming light)
+            glm::vec3 refl = glm::normalize(2 * glm::dot(lightDir, hitInfo.normal) * hitInfo.normal - lightDir);
+            //(Hit and Camera)
+            glm::vec3 viewDir = glm::normalize(hitInfo.hitPoint - ray.origin);
+
+            //Diffuse + Specular
+            color += (hitInfo.material.kd * light.color * glm::dot(hitInfo.normal, lightDir)) +
+                (hitInfo.material.ks * light.color * glm::pow(glm::dot(refl, viewDir), hitInfo.material.shininess));
+        }
+        //Draw ray in the hitPoint's color
+        drawRay(ray, color);
         // Set the color of the pixel to white if the ray hits.
         return glm::vec3(1.0f);
     } else {

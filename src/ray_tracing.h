@@ -3,6 +3,7 @@
 
 struct HitInfo {
     glm::vec3 normal;
+    glm::vec3 hitPoint;
     Material material;
 };
 
