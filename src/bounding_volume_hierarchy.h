@@ -86,7 +86,9 @@ struct Node
     // returns the id of the node
     unsigned long long getId();
 
-    AxisAlignedBox _boundingBox;
+    // return the bounding box corresponding to this node
+    AxisAlignedBox getBoundingBox();
+
 
     // after calling the this function, the ids of the further declared nodes will start again at 0.
     static void resetIdGenerator();
@@ -101,6 +103,8 @@ private:
     std::vector<unsigned long long> _children; // contains the ids of the children of this node. These ids are either node ids, or bvhObject ids, in the case of leaf nodes
 
     unsigned long long _id;
+
+    AxisAlignedBox _boundingBox;
 };
 
 

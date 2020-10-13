@@ -1,6 +1,14 @@
 #include "bounding_volume_hierarchy.h"
 #include "draw.h"
 
+
+// utility function, used for debugging
+void printAABB(AxisAlignedBox aabb) {
+    std::cout << "Lower " << aabb.lower.x << " " << aabb.lower.y << " " << aabb.lower.z << std::endl;
+    std::cout << "Upper " << aabb.upper.x << " " << aabb.upper.y << " " << aabb.upper.z << std::endl;
+    std::cout << std::endl;
+}
+
 unsigned long long Node::id = 0;
 unsigned long long BvhObject::id = 0;
 
@@ -42,7 +50,6 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
         unsigned int level = node_level.second;
         Node& node = nodes[node_id];
 
-        std::cout << level << std::endl;
 
         _max_level_achieved = std::max(_max_level_achieved, level);
 
@@ -84,6 +91,7 @@ unsigned long long BoundingVolumeHierarchy::createNode(std::vector<unsigned long
 
     Node n = Node(objects, isLeaf);
 
+
     // if the node is a leaf node, add references to the objects
     if(isLeaf) {
         for(int i = 0; i < objects.size(); i++) {
@@ -124,7 +132,7 @@ void BoundingVolumeHierarchy::debugDraw(int level)
 
     for(int i = 0; i < nodes_to_draw.size(); i++) {
         Node &n = nodes_to_draw[i];
-        drawAABB(n._boundingBox, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
+        drawAABB(n.getBoundingBox(), DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
     }
 }
 
@@ -298,6 +306,8 @@ BvhObject::BvhObject(Sphere& sphere) {
 
     _id = id++;
 
+
+
     // construct the AABB for the sphere
     _boundingBox.lower.x = sphere.center.x - sphere.radius;
     _boundingBox.lower.y = sphere.center.y - sphere.radius;
@@ -306,6 +316,8 @@ BvhObject::BvhObject(Sphere& sphere) {
     _boundingBox.upper.x = sphere.center.x + sphere.radius;
     _boundingBox.upper.y = sphere.center.y + sphere.radius;
     _boundingBox.upper.z = sphere.center.z + sphere.radius;
+
+    
 
     // set the type
     _type = _SPHERE_TYPE;
@@ -367,9 +379,12 @@ Node::Node(std::vector<BvhObject>& containingBvhObjectss, bool isLeaf) {
     _boundingBox.lower.y = std::numeric_limits<float>::max();
     _boundingBox.lower.z = std::numeric_limits<float>::max();
 
-    _boundingBox.upper.x = std::numeric_limits<float>::min();
-    _boundingBox.upper.y = std::numeric_limits<float>::min();
-    _boundingBox.upper.z = std::numeric_limits<float>::min();
+    _boundingBox.upper.x = -std::numeric_limits<float>::max();
+    _boundingBox.upper.y = -std::numeric_limits<float>::max();
+    _boundingBox.upper.z = -std::numeric_limits<float>::max();
+
+
+    
 
     for (auto object : containingBvhObjectss) {
         updateAABB(object.getAABB());
@@ -414,6 +429,10 @@ void Node::updateAABB(AxisAlignedBox& other) {
 
 unsigned long long Node::getId() {
     return _id;
+}
+
+AxisAlignedBox Node::getBoundingBox() {
+    return _boundingBox;
 }
 
 // after calling the this function, the ids of the further declared ndoes will start again at 0.
