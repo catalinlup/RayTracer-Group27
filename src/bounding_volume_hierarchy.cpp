@@ -211,18 +211,44 @@ std::array<std::vector<unsigned long long>, 2> BoundingVolumeHierarchy::medianSp
         axis_values.push_back(std::make_pair(weight, id));
     }
 
-    // sort the coordinate vector
-    std::sort(axis_values.begin(), axis_values.end());
-
-    // split in 2 halves
+    // the half vector
     std::vector<unsigned long long> firstHalf;
     std::vector<unsigned long long> secondHalf;
 
-    for(int i = 0; i < axis_values.size() / 2; i++)
-        firstHalf.push_back(axis_values[i].second);
+    // Old method, less efficient
+    // // sort the coordinate vector
+    // std::sort(axis_values.begin(), axis_values.end());
+
+    // // split in 2 halves
     
-    for(int i = axis_values.size() / 2 ; i < axis_values.size(); i++)
-        secondHalf.push_back(axis_values[i].second);
+    // for(int i = 0; i < axis_values.size() / 2; i++)
+    //     firstHalf.push_back(axis_values[i].second);
+    
+    // for(int i = axis_values.size() / 2 ; i < axis_values.size(); i++)
+    //     secondHalf.push_back(axis_values[i].second);
+
+    // New method, more efficient: Use quickselect (n_th element) to find the median point
+
+    int medianPosition = axis_values.size() / 2;
+    std::nth_element(axis_values.begin(), axis_values.begin() + medianPosition + 1, axis_values.end());
+    // get the median value:
+    std::pair<float, unsigned long long> medianElement = axis_values[medianPosition];
+
+    // split the data in 2 halves, one smaller or equal to the median, the other larger
+
+    for(int i = 0; i < axis_values.size(); i++) {
+        std::pair<float, unsigned long long> element = axis_values[i];
+
+        // if it is smaller, put it in the first half
+        if(element.first <= medianElement.first) {
+            firstHalf.push_back(element.second);
+        }
+        // else, put it in the second half
+        else {
+            secondHalf.push_back(element.second);
+        }
+    }
+
 
     std::array<std::vector<unsigned long long>, 2> arr;
     arr[0] = firstHalf;

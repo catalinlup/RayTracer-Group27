@@ -136,7 +136,7 @@ public:
         // prints a textual representation of the hierarchy tree. Useful for debugging
         void printHierarchy();
 
-        unsigned int _max_level = 8;
+        unsigned int _max_level = 7;
 
         unsigned int _max_level_achieved = 0;
 
