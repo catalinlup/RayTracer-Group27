@@ -6,6 +6,7 @@
 #include "screen.h"
 #include "trackball.h"
 #include "window.h"
+
 // Disable compiler warnings in third-party code (which we cannot change).
 DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
@@ -26,31 +27,121 @@ DISABLE_WARNINGS_POP()
 #endif
 
 // This is the main application. The code in here does not need to be modified.
-constexpr glm::ivec2 windowResolution { 800, 800 };
-const std::filesystem::path dataPath { DATA_DIR };
-const std::filesystem::path outputPath { OUTPUT_DIR };
+constexpr glm::ivec2 windowResolution{ 800, 800 };
+const std::filesystem::path dataPath{ DATA_DIR };
+const std::filesystem::path outputPath{ OUTPUT_DIR };
 
 enum class ViewMode {
-    Rasterization = 0,
-    RayTracing = 1
+	Rasterization = 0,
+	RayTracing = 1
 };
+
+
+bool checkShadow(HitInfo hitInfo, PointLight light, const BoundingVolumeHierarchy& bvh) {
+	Ray testRay;
+	HitInfo old = hitInfo;
+	testRay.origin = old.hitPoint;
+	glm::vec3 direction = light.position - old.hitPoint;
+	testRay.direction = glm::normalize(direction);
+	if (bvh.intersect(testRay, hitInfo)) {
+		glm::vec3 t = (hitInfo.hitPoint - testRay.origin) / direction;
+		if (glm::all(glm::greaterThan(t, glm::vec3(0))) && glm::all(glm::lessThan(t, glm::vec3(1)))) {
+			drawRay(testRay, glm::vec3(1, 0, 0));
+			return false;
+		}
+	}
+	drawRay(testRay, glm::vec3(1, 1, 0));
+	return true;
+}
+
+glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight light, Ray ray, HitInfo hitInfo, glm::vec3 cameraPos) {
+	glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
+	glm::vec3 resColor(0);
+	//Check if the intersecting surface has a non black Ks value and that we haven't passed the relfected ray count
+	if (glm::all(glm::notEqual(hitInfo.material.ks, glm::vec3(0))) && level > 0) {
+		if (checkShadow(hitInfo, light, bvh)) {
+			glm::vec3 reflectedLight = 2 * glm::dot(lightDir, hitInfo.normal) * hitInfo.normal - lightDir;
+			glm::vec3 viewDir = glm::normalize(cameraPos - hitInfo.hitPoint);
+
+			resColor = hitInfo.material.ks * light.color * glm::pow(glm::dot(glm::normalize(reflectedLight), viewDir), hitInfo.material.shininess);
+
+			//Keep the old hitInfo in case the reflected ray has no further intersections
+			HitInfo old = hitInfo;
+
+			Ray reflectedRay;
+			reflectedRay.origin = old.hitPoint;
+			reflectedRay.direction = 2 * glm::dot(old.normal, viewDir) * old.normal - viewDir;
+
+			Ray normalRay;
+			normalRay.origin = old.hitPoint;
+			normalRay.direction = old.normal;
+
+			Ray lightRay;
+			lightRay.origin = old.hitPoint;
+			lightRay.direction = lightDir;
+
+			if (bvh.intersect(reflectedRay, hitInfo)) {
+				//std::cout << "Refl Hit" << std::endl;
+				drawRay(reflectedRay, glm::vec3(1));
+				//drawRay(normalRay, glm::vec3(1, 0, 0));
+				level--;
+				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, cameraPos);
+			}
+			else {
+				//Restore old hitInfo because there was no hit
+				hitInfo = old;
+				//std::cout << "No Hit" << std::endl;
+				drawRay(reflectedRay, glm::vec3(1));
+				//Stop the recursion
+				level = 0;
+				return resColor;
+			}
+		}
+		//Point in shadow skip computations
+		else {
+			return resColor;
+		}
+	}
+	//Black specularity return 0 vector back
+	else {
+		
+		return glm::vec3(0);
+	}
+
+}
 
 
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
 static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray)
 {
-    HitInfo hitInfo;
-    if (bvh.intersect(ray, hitInfo)) {
-        // Draw a white debug ray.
-        drawRay(ray, glm::vec3(1.0f));
-        // Set the color of the pixel to white if the ray hits.
-        return glm::vec3(1.0f);
-    } else {
-        // Draw a red debug ray if the ray missed.
-        drawRay(ray, glm::vec3(1.0f, 0.0f, 0.0f));
-        // Set the color of the pixel to black if the ray misses.
-        return glm::vec3(0.0f);
-    }
+	HitInfo hitInfo;
+
+	/*For every light calulate the addition from the reflected rays,
+	then add all of them*/
+	if (bvh.intersect(ray, hitInfo)) {
+		drawRay(ray, glm::vec3(1));
+		glm::vec3 color(0);
+		for (const auto& light : scene.pointLights) {
+			if (checkShadow(hitInfo, light, bvh)) {
+				glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
+				glm::vec3 diffuse = hitInfo.material.kd * light.color * glm::dot(hitInfo.normal, lightDir);
+
+				color += diffuse + calcSpecular(4, bvh, light, ray, hitInfo, ray.origin);
+			}
+			else {
+				//Point is not in direct light
+				return glm::vec3(0.0f);
+			}
+		}
+		// Set the color of the pixel to white if the ray hits.
+		return glm::vec3(1.0f);
+	}
+	else { 
+		// Draw a red debug ray if the ray missed.
+		drawRay(ray, glm::vec3(1.0f, 0.0f, 0.0f));
+		// Set the color of the pixel to black if the ray misses.
+		return glm::vec3(0.0f);
+	}
 }
 
 static void setOpenGLMatrices(const Trackball& camera);
@@ -62,17 +153,17 @@ static void renderRayTracing(const Scene& scene, const Trackball& camera, const 
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
-    for (int y = 0; y < windowResolution.y; y++) {
-        for (int x = 0; x != windowResolution.x; x++) {
-            // NOTE: (-1, -1) at the bottom left of the screen, (+1, +1) at the top right of the screen.
-            const glm::vec2 normalizedPixelPos {
-                float(x) / windowResolution.x * 2.0f - 1.0f,
-                float(y) / windowResolution.y * 2.0f - 1.0f
-            };
-            const Ray cameraRay = camera.generateRay(normalizedPixelPos);
-            screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay));
-        }
-    }
+	for (int y = 0; y < windowResolution.y; y++) {
+		for (int x = 0; x != windowResolution.x; x++) {
+			// NOTE: (-1, -1) at the bottom left of the screen, (+1, +1) at the top right of the screen.
+			const glm::vec2 normalizedPixelPos{
+				float(x) / windowResolution.x * 2.0f - 1.0f,
+				float(y) / windowResolution.y * 2.0f - 1.0f
+			};
+			const Ray cameraRay = camera.generateRay(normalizedPixelPos);
+			screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay));
+		}
+	}
 }
 
 int main(int argc, char** argv)
@@ -263,86 +354,87 @@ int main(int argc, char** argv)
 
 static void setOpenGLMatrices(const Trackball& camera)
 {
-    // Load view matrix.
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    const glm::mat4 viewMatrix = camera.viewMatrix();
-    glMultMatrixf(glm::value_ptr(viewMatrix));
+	// Load view matrix.
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	const glm::mat4 viewMatrix = camera.viewMatrix();
+	glMultMatrixf(glm::value_ptr(viewMatrix));
 
-    // Load projection matrix.
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    const glm::mat4 projectionMatrix = camera.projectionMatrix();
-    glMultMatrixf(glm::value_ptr(projectionMatrix));
+	// Load projection matrix.
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	const glm::mat4 projectionMatrix = camera.projectionMatrix();
+	glMultMatrixf(glm::value_ptr(projectionMatrix));
 }
 
 static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight)
 {
-    // Normals will be normalized in the graphics pipeline.
-    glEnable(GL_NORMALIZE);
-    // Activate rendering modes.
-    glEnable(GL_DEPTH_TEST);
-    // Draw front and back facing triangles filled.
-    glPolygonMode(GL_FRONT, GL_FILL);
-    glPolygonMode(GL_BACK, GL_FILL);
-    // Interpolate vertex colors over the triangles.
-    glShadeModel(GL_SMOOTH);
-    setOpenGLMatrices(camera);
+	// Normals will be normalized in the graphics pipeline.
+	glEnable(GL_NORMALIZE);
+	// Activate rendering modes.
+	glEnable(GL_DEPTH_TEST);
+	// Draw front and back facing triangles filled.
+	glPolygonMode(GL_FRONT, GL_FILL);
+	glPolygonMode(GL_BACK, GL_FILL);
+	// Interpolate vertex colors over the triangles.
+	glShadeModel(GL_SMOOTH);
+	setOpenGLMatrices(camera);
 
-    glDisable(GL_LIGHTING);
-    // Render point lights as very small dots
-    for (const auto& light : scene.pointLights)
-        drawSphere(light.position, 0.01f, light.color);
-    for (const auto& light : scene.sphericalLight)
-        drawSphere(light.position, light.radius, light.color);
+	glDisable(GL_LIGHTING);
+	// Render point lights as very small dots
+	for (const auto& light : scene.pointLights)
+		drawSphere(light.position, 0.01f, light.color);
+	for (const auto& light : scene.sphericalLight)
+		drawSphere(light.position, light.radius, light.color);
 
-    if (!scene.pointLights.empty() || !scene.sphericalLight.empty()) {
-        if (selectedLight < static_cast<int>(scene.pointLights.size())) {
-            // Draw a big yellow sphere and then the small light sphere on top.
-            const auto& light = scene.pointLights[selectedLight];
-            drawSphere(light.position, 0.05f, glm::vec3(1, 1, 0));
-            glDisable(GL_DEPTH_TEST);
-            drawSphere(light.position, 0.01f, light.color);
-            glEnable(GL_DEPTH_TEST);
-        } else {
-            // Draw a big yellow sphere and then the smaller light sphere on top.
-            const auto& light = scene.sphericalLight[selectedLight - scene.pointLights.size()];
-            drawSphere(light.position, light.radius + 0.01f, glm::vec3(1, 1, 0));
-            glDisable(GL_DEPTH_TEST);
-            drawSphere(light.position, light.radius, light.color);
-            glEnable(GL_DEPTH_TEST);
-        }
-    }
+	if (!scene.pointLights.empty() || !scene.sphericalLight.empty()) {
+		if (selectedLight < static_cast<int>(scene.pointLights.size())) {
+			// Draw a big yellow sphere and then the small light sphere on top.
+			const auto& light = scene.pointLights[selectedLight];
+			drawSphere(light.position, 0.05f, glm::vec3(1, 1, 0));
+			glDisable(GL_DEPTH_TEST);
+			drawSphere(light.position, 0.01f, light.color);
+			glEnable(GL_DEPTH_TEST);
+		}
+		else {
+			// Draw a big yellow sphere and then the smaller light sphere on top.
+			const auto& light = scene.sphericalLight[selectedLight - scene.pointLights.size()];
+			drawSphere(light.position, light.radius + 0.01f, glm::vec3(1, 1, 0));
+			glDisable(GL_DEPTH_TEST);
+			drawSphere(light.position, light.radius, light.color);
+			glEnable(GL_DEPTH_TEST);
+		}
+	}
 
-    // Activate the light in the legacy OpenGL mode.
-    glEnable(GL_LIGHTING);
+	// Activate the light in the legacy OpenGL mode.
+	glEnable(GL_LIGHTING);
 
-    int i = 0;
-    const auto enableLight = [&](const auto& light) {
-        glEnable(GL_LIGHT0 + i);
-        const glm::vec4 position4 { light.position, 1 };
-        glLightfv(GL_LIGHT0 + i, GL_POSITION, glm::value_ptr(position4));
-        const glm::vec4 color4 { glm::clamp(light.color, 0.0f, 1.0f), 1.0f };
-        const glm::vec4 zero4 { 0.0f, 0.0f, 0.0f, 1.0f };
-        glLightfv(GL_LIGHT0 + i, GL_AMBIENT, glm::value_ptr(zero4));
-        glLightfv(GL_LIGHT0 + i, GL_DIFFUSE, glm::value_ptr(color4));
-        glLightfv(GL_LIGHT0 + i, GL_SPECULAR, glm::value_ptr(zero4));
-        // NOTE: quadratic attenuation doesn't work like you think it would in legacy OpenGL.
-        // The distance is not in world space but in NDC space!
-        glLightf(GL_LIGHT0 + i, GL_CONSTANT_ATTENUATION, 1.0f);
-        glLightf(GL_LIGHT0 + i, GL_LINEAR_ATTENUATION, 0.0f);
-        glLightf(GL_LIGHT0 + i, GL_QUADRATIC_ATTENUATION, 0.0f);
-        i++;
-    };
-    for (const auto& light : scene.pointLights)
-        enableLight(light);
-    for (const auto& light : scene.sphericalLight)
-        enableLight(light);
+	int i = 0;
+	const auto enableLight = [&](const auto& light) {
+		glEnable(GL_LIGHT0 + i);
+		const glm::vec4 position4{ light.position, 1 };
+		glLightfv(GL_LIGHT0 + i, GL_POSITION, glm::value_ptr(position4));
+		const glm::vec4 color4{ glm::clamp(light.color, 0.0f, 1.0f), 1.0f };
+		const glm::vec4 zero4{ 0.0f, 0.0f, 0.0f, 1.0f };
+		glLightfv(GL_LIGHT0 + i, GL_AMBIENT, glm::value_ptr(zero4));
+		glLightfv(GL_LIGHT0 + i, GL_DIFFUSE, glm::value_ptr(color4));
+		glLightfv(GL_LIGHT0 + i, GL_SPECULAR, glm::value_ptr(zero4));
+		// NOTE: quadratic attenuation doesn't work like you think it would in legacy OpenGL.
+		// The distance is not in world space but in NDC space!
+		glLightf(GL_LIGHT0 + i, GL_CONSTANT_ATTENUATION, 1.0f);
+		glLightf(GL_LIGHT0 + i, GL_LINEAR_ATTENUATION, 0.0f);
+		glLightf(GL_LIGHT0 + i, GL_QUADRATIC_ATTENUATION, 0.0f);
+		i++;
+	};
+	for (const auto& light : scene.pointLights)
+		enableLight(light);
+	for (const auto& light : scene.sphericalLight)
+		enableLight(light);
 
-    // Draw the scene and the ray (if any).
-    drawScene(scene);
+	// Draw the scene and the ray (if any).
+	drawScene(scene);
 
-    // Draw a colored sphere at the location at which the trackball is looking/rotating around.
-    glDisable(GL_LIGHTING);
-    drawSphere(camera.lookAt(), 0.01f, glm::vec3(0.2f, 0.2f, 1.0f));
+	// Draw a colored sphere at the location at which the trackball is looking/rotating around.
+	glDisable(GL_LIGHTING);
+	drawSphere(camera.lookAt(), 0.01f, glm::vec3(0.2f, 0.2f, 1.0f));
 }
