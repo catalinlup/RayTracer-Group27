@@ -81,17 +81,17 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 			lightRay.direction = lightDir;
 
 			if (bvh.intersect(reflectedRay, hitInfo)) {
-				//std::cout << "Refl Hit" << std::endl;
 				drawRay(reflectedRay, glm::vec3(1));
+				std::cout << "Refl Hit" << std::endl;
 				//drawRay(normalRay, glm::vec3(1, 0, 0));
 				level--;
-				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, cameraPos);
+				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, old.hitPoint);
 			}
 			else {
 				//Restore old hitInfo because there was no hit
 				hitInfo = old;
-				//std::cout << "No Hit" << std::endl;
 				drawRay(reflectedRay, glm::vec3(1));
+				std::cout << "No Hit" << std::endl;
 				//Stop the recursion
 				level = 0;
 				return resColor;
