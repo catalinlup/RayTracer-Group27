@@ -370,14 +370,14 @@ BvhObject::BvhObject(Sphere& sphere) {
     _sphere[0] = sphere;
 }
 
-std::array<glm::vec3, 3>& BvhObject::getTriangle() {
+std::array<glm::vec3, 3> BvhObject::getTriangle() {
     if (_type != _TRIANGLE_TYPE)
         throw std::exception(); 
 
     return _triangle;
 }
 
-Sphere& BvhObject::getSphere() {
+Sphere BvhObject::getSphere() {
     if (_type != _SPHERE_TYPE)
         throw std::exception();
 

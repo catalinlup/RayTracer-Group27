@@ -39,8 +39,8 @@ public:
     // returns the object's unique id
     unsigned long long getId();
 
-    std::array<glm::vec3, 3> &getTriangle();
-    Sphere& getSphere();
+    std::array<glm::vec3, 3> getTriangle();
+    Sphere getSphere();
 
     // after calling the this function, the ids of the further declared objects will start again at 0.
     static void resetIdGenerator();
@@ -89,6 +89,7 @@ struct Node
     // return the bounding box corresponding to this node
     AxisAlignedBox getBoundingBox();
 
+    // returns the ids of the children of the node.
     std::vector<unsigned long long> getChildren();
 
 
