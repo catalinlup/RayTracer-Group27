@@ -36,42 +36,75 @@ enum class ViewMode {
 	RayTracing = 1
 };
 
-glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight light, Ray ray, HitInfo hitInfo) {
+
+bool checkShadow(HitInfo hitInfo, PointLight light, const BoundingVolumeHierarchy& bvh) {
+	Ray testRay;
+	HitInfo old = hitInfo;
+	testRay.origin = old.hitPoint;
+	glm::vec3 direction = light.position - old.hitPoint;
+	testRay.direction = glm::normalize(direction);
+	if (bvh.intersect(testRay, hitInfo)) {
+		glm::vec3 t = (hitInfo.hitPoint - testRay.origin) / direction;
+		if (glm::all(glm::greaterThan(t, glm::vec3(0))) && glm::all(glm::lessThan(t, glm::vec3(1)))) {
+			drawRay(testRay, glm::vec3(1, 0, 0));
+			return false;
+		}
+	}
+	drawRay(testRay, glm::vec3(1, 1, 0));
+	return true;
+}
+
+glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight light, Ray ray, HitInfo hitInfo, glm::vec3 cameraPos) {
 	glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
 	glm::vec3 resColor(0);
 	//Check if the intersecting surface has a non black Ks value and that we haven't passed the relfected ray count
 	if (glm::all(glm::notEqual(hitInfo.material.ks, glm::vec3(0))) && level > 0) {
-		//Reflected ray
-		glm::vec3 refl = 2 * glm::dot(lightDir, hitInfo.normal) * hitInfo.normal - lightDir;
-		//View direction(possibly need to change to the camera position)
-		glm::vec3 viewDir = glm::normalize(hitInfo.hitPoint - ray.origin);
-		//Calculate the specular value at the current intersection point
-		resColor = hitInfo.material.ks * light.color * glm::pow(glm::dot(glm::normalize(refl), viewDir), hitInfo.material.shininess);
+		if (checkShadow(hitInfo, light, bvh)) {
+			glm::vec3 reflectedLight = 2 * glm::dot(lightDir, hitInfo.normal) * hitInfo.normal - lightDir;
+			glm::vec3 viewDir = glm::normalize(cameraPos - hitInfo.hitPoint);
 
-		//Create the reflected ray for the visual debug
-		Ray reflectedRay;
-		reflectedRay.origin = hitInfo.hitPoint;
-		reflectedRay.direction = refl;
+			resColor = hitInfo.material.ks * light.color * glm::pow(glm::dot(glm::normalize(reflectedLight), viewDir), hitInfo.material.shininess);
 
-		//Keep the old hitInfo in case the reflected ray has no further intersections
-		HitInfo old = hitInfo;
-		if (bvh.intersect(reflectedRay, hitInfo)) {
-			//Draw visual debug
-			drawRay(reflectedRay, glm::vec3(1));
-			level--;
-			resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo);
+			//Keep the old hitInfo in case the reflected ray has no further intersections
+			HitInfo old = hitInfo;
+
+			Ray reflectedRay;
+			reflectedRay.origin = old.hitPoint;
+			reflectedRay.direction = 2 * glm::dot(old.normal, viewDir) * old.normal - viewDir;
+
+			Ray normalRay;
+			normalRay.origin = old.hitPoint;
+			normalRay.direction = old.normal;
+
+			Ray lightRay;
+			lightRay.origin = old.hitPoint;
+			lightRay.direction = lightDir;
+
+			if (bvh.intersect(reflectedRay, hitInfo)) {
+				//std::cout << "Refl Hit" << std::endl;
+				drawRay(reflectedRay, glm::vec3(1));
+				//drawRay(normalRay, glm::vec3(1, 0, 0));
+				level--;
+				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, cameraPos);
+			}
+			else {
+				//Restore old hitInfo because there was no hit
+				hitInfo = old;
+				//std::cout << "No Hit" << std::endl;
+				drawRay(reflectedRay, glm::vec3(1));
+				//Stop the recursion
+				level = 0;
+				return resColor;
+			}
 		}
+		//Point in shadow skip computations
 		else {
-			//Restore old hitInfo because there was no hit
-			hitInfo = old;
-			drawRay(reflectedRay, glm::vec3(1));
-			//Stop the recursion
-			level = 0;
 			return resColor;
 		}
 	}
 	//Black specularity return 0 vector back
 	else {
+		
 		return glm::vec3(0);
 	}
 
@@ -89,12 +122,17 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 		drawRay(ray, glm::vec3(1));
 		glm::vec3 color(0);
 		for (const auto& light : scene.pointLights) {
-			glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
-			glm::vec3 diffuse = hitInfo.material.kd * light.color * glm::dot(hitInfo.normal, lightDir);
+			if (checkShadow(hitInfo, light, bvh)) {
+				glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
+				glm::vec3 diffuse = hitInfo.material.kd * light.color * glm::dot(hitInfo.normal, lightDir);
 
-			color += diffuse + calcSpecular(2, bvh, light, ray, hitInfo);
+				color += diffuse + calcSpecular(4, bvh, light, ray, hitInfo, ray.origin);
+			}
+			else {
+				//Point is not in direct light
+				return glm::vec3(0.0f);
+			}
 		}
-	
 		// Set the color of the pixel to white if the ray hits.
 		return glm::vec3(1.0f);
 	}
