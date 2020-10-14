@@ -89,6 +89,10 @@ struct Node
     // return the bounding box corresponding to this node
     AxisAlignedBox getBoundingBox();
 
+    std::vector<unsigned long long> getChildren();
+
+
+
 
     // after calling the this function, the ids of the further declared nodes will start again at 0.
     static void resetIdGenerator();

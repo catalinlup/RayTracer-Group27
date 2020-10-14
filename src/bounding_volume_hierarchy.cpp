@@ -470,6 +470,10 @@ void Node::updateAABB(AxisAlignedBox& other) {
     _boundingBox.upper.z = std::max(other.upper.z, _boundingBox.upper.z);
 }
 
+// returns the ids of the children of the node.
+std::vector<unsigned long long> Node::getChildren() {
+    return _children;
+}
 
 unsigned long long Node::getId() {
     return _id;
