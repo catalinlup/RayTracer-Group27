@@ -97,6 +97,8 @@ unsigned long long BoundingVolumeHierarchy::createNode(std::vector<unsigned long
         for(int i = 0; i < objects.size(); i++) {
             n.addChild(objects[i]);
         }
+        // add the node to the leaf nodes list
+        leafNodes.push_back(n.getId());
     }
 
     // add node to the nodes map
@@ -113,7 +115,7 @@ unsigned long long BoundingVolumeHierarchy::createNode(std::vector<unsigned long
 // Use this function to visualize your BVH. This can be useful for debugging. Use the functions in
 // draw.h to draw the various shapes. We have extended the AABB draw functions to support wireframe
 // mode, arbitrary colors and transparency.
-void BoundingVolumeHierarchy::debugDraw(int level)
+void BoundingVolumeHierarchy::debugDraw(int level, bool showLeafNodes)
 {
 
     // // Draw the AABB as a transparent green box.
@@ -125,14 +127,30 @@ void BoundingVolumeHierarchy::debugDraw(int level)
     // //drawAABB(aabb, DrawMode::Wireframe);
     // drawAABB(aabb, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
 
-    unsigned int level_to_extrat = std::min((unsigned int)level, _max_level);
+    unsigned int level_to_extract = std::min((unsigned int)level, _max_level);
 
-    std::vector<unsigned long long> nodes_to_draw_ids = nodes_at_level[level_to_extrat];
+    std::vector<unsigned long long> nodes_to_draw_ids = nodes_at_level[level_to_extract];
     std::vector<Node> nodes_to_draw = getMapValuesOfKeys(nodes, nodes_to_draw_ids);
 
     for(int i = 0; i < nodes_to_draw.size(); i++) {
         Node &n = nodes_to_draw[i];
-        drawAABB(n.getBoundingBox(), DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
+        // draw the AABB in green
+        if(!showLeafNodes)
+            drawAABB(n.getBoundingBox(), DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
+    }
+
+    // if the option is active, draw all of the leaf nodes in red.
+    if(showLeafNodes) {
+        // get all of the leaf nodes
+        std::vector<Node> leafNodesToDraw = getMapValuesOfKeys(nodes, leafNodes);
+
+        //std::cout << leafNodesToDraw.size() << std::endl;
+
+        for (int i = 0; i < leafNodesToDraw.size(); i++) {
+            Node &n = leafNodesToDraw[i];
+            // draw the leaf node AABB in red.
+            drawAABB(n.getBoundingBox(), DrawMode::Filled, glm::vec3(1.0f, 0.05f, 0.05f), 0.5);
+        }   
     }
 }
 

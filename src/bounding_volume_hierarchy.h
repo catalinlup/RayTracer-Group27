@@ -115,7 +115,7 @@ public:
     BoundingVolumeHierarchy(Scene* pScene);
 
     // Use this function to visualize your BVH. This can be useful for debugging.
-    void debugDraw(int level);
+    void debugDraw(int level, bool showLeafNodes);
     int numLevels() const;
 
     // Return true if something is hit, returns false otherwise.
@@ -149,6 +149,7 @@ public:
 
         Scene *m_pScene;
 
+        std::vector<unsigned long long> leafNodes;                                     // stores the ids of all of the leaf nodes
         std::map<unsigned long long, Node> nodes;                                      // map storing all of the nodes in the BVH indexed by their id.
         std::map<unsigned long long, BvhObject> bvhObjects;                            // map storing all BvhObjects indexed by their id
         std::map<unsigned long long, std::vector<unsigned long long>> objects_at_node; // map storing the ids of all the objects corresponding to one Node

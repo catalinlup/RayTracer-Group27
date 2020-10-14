@@ -92,6 +92,7 @@ int main(int argc, char** argv)
     BoundingVolumeHierarchy bvh { &scene };
 
     int bvhDebugLevel = 0;
+    bool bvhShowLeafNodes {false}; // controls whether or not the leaf nodes should be highlighted in red
     bool debugBVH { false };
     ViewMode viewMode { ViewMode::Rasterization };
 
@@ -148,8 +149,11 @@ int main(int argc, char** argv)
         ImGui::Text("Debugging");
         if (viewMode == ViewMode::Rasterization) {
             ImGui::Checkbox("Draw BVH", &debugBVH);
-            if (debugBVH)
+            if (debugBVH) {
                 ImGui::SliderInt("BVH Level", &bvhDebugLevel, 0, bvh.numLevels() - 1);
+                ImGui::Checkbox("Show BVH leaf nodes", &bvhShowLeafNodes);
+            }
+            
         }
 
         ImGui::Spacing();
@@ -246,7 +250,7 @@ int main(int argc, char** argv)
             // https://learnopengl.com/Advanced-OpenGL/Blending
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            bvh.debugDraw(bvhDebugLevel);
+            bvh.debugDraw(bvhDebugLevel, bvhShowLeafNodes);
             glPopAttrib();
         }
 
