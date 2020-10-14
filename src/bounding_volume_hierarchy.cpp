@@ -370,14 +370,14 @@ BvhObject::BvhObject(Sphere& sphere) {
     _sphere[0] = sphere;
 }
 
-std::array<glm::vec3, 3> BvhObject::getTriangle() {
+std::array<glm::vec3, 3>& BvhObject::getTriangle() {
     if (_type != _TRIANGLE_TYPE)
         throw std::exception(); 
 
     return _triangle;
 }
 
-Sphere BvhObject::getSphere() {
+Sphere& BvhObject::getSphere() {
     if (_type != _SPHERE_TYPE)
         throw std::exception();
 
@@ -470,7 +470,7 @@ void Node::updateAABB(AxisAlignedBox& other) {
     _boundingBox.upper.z = std::max(other.upper.z, _boundingBox.upper.z);
 }
 
-// returns the ids of the children of the node.
+// returns the ids of the children of the children
 std::vector<unsigned long long> Node::getChildren() {
     return _children;
 }
@@ -479,7 +479,7 @@ unsigned long long Node::getId() {
     return _id;
 }
 
-AxisAlignedBox Node::getBoundingBox() {
+AxisAlignedBox& Node::getBoundingBox() {
     return _boundingBox;
 }
 
