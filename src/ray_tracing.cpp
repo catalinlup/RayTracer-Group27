@@ -37,7 +37,7 @@ bool intersectRayWithPlane(const Plane& plane, Ray& ray)
         return false;
     }
     float t = (plane.D - glm::dot(ray.origin, plane.normal)) / nDotd;
-    if (t >= 0) {
+    if (t > 0) {
         //Check if found t is actually closer to the origin than the current t stored in ray.t
         if (t < ray.t) {
             ray.t = t;
@@ -72,6 +72,7 @@ bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const gl
     Plane plane = trianglePlane(v0, v1, v2); //get the plane
     if (intersectRayWithPlane(plane, ray)) { //does ray intersect plane
         glm::vec3 point = ray.origin + ray.direction * ray.t;
+        //std::cout << "start" << ray.t << std::endl;
         if (pointInTriangle(v0, v1, v2, plane.normal, point)) { //does point lie in triangle
             hitInfo.normal = plane.normal;
             hitInfo.hitPoint = point;
@@ -82,6 +83,7 @@ bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const gl
             ray.t = tOld;
         }
     }
+    ray.t = tOld;
     return false;
 }
 
