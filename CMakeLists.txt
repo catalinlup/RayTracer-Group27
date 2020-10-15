@@ -18,6 +18,7 @@ add_executable(FinalProject2
 	"src/draw.cpp"
 	"src/screen.cpp"
 	"src/bounding_volume_hierarchy.cpp"
+	"src/shadow.cpp"
 	"src/image.cpp"
 	"src/stb_image.cpp")
 # Link to all dependencies / make their header files available.
