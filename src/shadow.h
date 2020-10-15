@@ -6,4 +6,6 @@
 
 bool isInHardShadow(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh);
 
+bool isHitFromLight(const glm::vec3 point, const PointLight& light, const BoundingVolumeHierarchy& bvh);
+
 std::vector<PointLight> getVisablePointLights(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh);
