@@ -33,7 +33,8 @@ const std::filesystem::path outputPath{ OUTPUT_DIR };
 
 enum class ViewMode {
 	Rasterization = 0,
-	RayTracing = 1
+	RayTracing = 1,
+	Textures = 2
 };
 
 
@@ -110,14 +111,27 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 
 }
 
+// Textures settings - used for debugging only!
+TextureFiltering textureFiltering{TextureFiltering::NearestNeighbor};
+OutOfBoundsRule outOfBoundsRuleX{OutOfBoundsRule::Border}; // Border, Clamp, Repeat
+OutOfBoundsRule outOfBoundsRuleY{OutOfBoundsRule::Border};
+glm::vec3 textureBorderColor(0);
+
 // used for debugging the textures
 static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray) {
 	HitInfo hitInfo;
+
+	
 
 	if(bvh.intersect(ray, hitInfo)) {
 		Material mat = hitInfo.material;
 		if(mat.kdTexture) {
 			Image texture = mat.kdTexture.value();
+
+			texture.setBorderColor(textureBorderColor);
+			texture.setOutOfBoundsRuleX(outOfBoundsRuleX);
+			texture.setOutOfBoundsRuleY(outOfBoundsRuleY);
+			texture.setTextureFilteringMethod(textureFiltering);
 
 			// verticies
 			glm::vec2 textureCoordinate = hitInfo.texCoord;
@@ -137,9 +151,6 @@ static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
 static glm::vec3 getFinalColor(const Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray)
 {
-	// for debugging purposes only
-	return getFinalColorNoRayTracingJustTextures(scene, bvh, ray);
-
 	HitInfo hitInfo;
 
 	/*For every light calulate the addition from the reflected rays,
@@ -173,8 +184,11 @@ static glm::vec3 getFinalColor(const Scene &scene, const BoundingVolumeHierarchy
 static void setOpenGLMatrices(const Trackball& camera);
 static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
 
+
+
 // This is the main rendering function. You are free to change this function in any way (including the function signature).
-static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen)
+// if texture debugging is set to true, the method will call the getFinalColorNoRayTracingJustTextures, instead of getFinalColor.
+static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen, bool textureDebugging = false)
 {
 #ifdef USE_OPENMP
 #pragma omp parallel for
@@ -187,7 +201,10 @@ static void renderRayTracing(const Scene& scene, const Trackball& camera, const 
 				float(y) / windowResolution.y * 2.0f - 1.0f
 			};
 			const Ray cameraRay = camera.generateRay(normalizedPixelPos);
-			screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay));
+			if (textureDebugging)
+				screen.setPixel(x, y, getFinalColorNoRayTracingJustTextures(scene, bvh, cameraRay));
+			else
+				screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay));
 		}
 	}
 }
@@ -212,6 +229,10 @@ int main(int argc, char** argv)
     bool bvhShowLeafNodes {false}; // controls whether or not the leaf nodes should be highlighted in red
     bool debugBVH { false };
     ViewMode viewMode { ViewMode::Rasterization };
+
+	bool drawWhenInTextureMode {false}; // controls whether the object is drawn or not when in texture mode. Used to reduce lag
+
+	
 
     window.registerKeyCallback([&](int key, int /* scancode */, int action, int /* mods */) {
         if (action == GLFW_PRESS) {
@@ -249,7 +270,7 @@ int main(int argc, char** argv)
 			}
 		}
         {
-            constexpr std::array items { "Rasterization", "Ray Traced" };
+            constexpr std::array items { "Rasterization", "Ray Traced", "Textures" };
             ImGui::Combo("View mode", reinterpret_cast<int*>(&viewMode), items.data(), int(items.size()));
         }
         if (ImGui::Button("Render to file")) {
@@ -272,7 +293,22 @@ int main(int argc, char** argv)
                 ImGui::Checkbox("Show BVH leaf nodes", &bvhShowLeafNodes);
             }
             
-        }
+        } else if(viewMode == ViewMode::Textures) {
+			{
+				ImGui::Checkbox("Draw", &drawWhenInTextureMode);
+
+				constexpr std::array filtering_modes{"Nearest Neighbor", "Bilinear"};
+				ImGui::Combo("Filteting Mode", reinterpret_cast<int *>(&textureFiltering), filtering_modes.data(), int(filtering_modes.size()));
+
+				constexpr std::array oob_x{"Border", "Clamping", "Repeat"};
+				ImGui::Combo("Out Of Bounds X", reinterpret_cast<int *>(&outOfBoundsRuleX), oob_x.data(), int(oob_x.size()));
+
+				constexpr std::array oob_y{"Border", "Clamping", "Repeat"};
+				ImGui::Combo("Out Of Bounds Y", reinterpret_cast<int *>(&outOfBoundsRuleY), oob_y.data(), int(oob_y.size()));
+
+				ImGui::ColorEdit3("Border color", glm::value_ptr(textureBorderColor));
+			}
+		}
 
         ImGui::Spacing();
         ImGui::Separator();
@@ -354,6 +390,13 @@ int main(int argc, char** argv)
             screen.setPixel(0, 0, glm::vec3(1.0f));
             screen.draw(); // Takes the image generated using ray tracing and outputs it to the screen using OpenGL.
         } break;
+		case ViewMode::Textures: {
+			screen.clear(glm::vec3(0.0f));
+			// render in textureDebugging mode
+			if(drawWhenInTextureMode) renderRayTracing(scene, camera, bvh, screen, true);
+			screen.setPixel(0, 0, glm::vec3(1.0f));
+			screen.draw(); // Takes the image generated using ray tracing and outputs it to the screen using OpenGL.
+		} break;
         default:
             break;
         };

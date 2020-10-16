@@ -13,9 +13,10 @@ enum class OutOfBoundsRule {
     Repeat
 };
 
-enum class TextureFiltering {
-    Bilinear,
-    NearestNeighbor
+enum class TextureFiltering
+{
+    NearestNeighbor,
+    Bilinear
 };
 
 class Image {
