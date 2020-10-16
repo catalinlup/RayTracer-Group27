@@ -101,8 +101,13 @@ bool intersectRayWithShape(const Sphere& sphere, Ray& ray, HitInfo& hitInfo)
     if (disc >= 0) {
         float t0 = (-B + glm::sqrt(disc)) / (2 * A);
         float t1 = (-B - glm::sqrt(disc)) / (2 * A);
-        ray.t = glm::min(t0, t1);
-        return true;
+        if (glm::min(t0, t1) > 0) {
+            ray.t = glm::min(t0, t1);
+            hitInfo.hitPoint = ray.origin + ray.t * ray.direction;
+            hitInfo.normal = glm::normalize(hitInfo.hitPoint - sphere.center);
+            hitInfo.material = sphere.material;
+            return true;
+        }
     }
     return false;
 }

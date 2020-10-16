@@ -6,6 +6,7 @@
 #include "screen.h"
 #include "trackball.h"
 #include "window.h"
+#include "shadow.h"
 
 // Disable compiler warnings in third-party code (which we cannot change).
 DISABLE_WARNINGS_PUSH()
@@ -112,8 +113,12 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 
 
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
-static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray)
+static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int level=0)
 {
+	if (level == 2) {
+		return glm::vec3(0);
+	}
+
 	HitInfo hitInfo;
 
 	/*For every light calulate the addition from the reflected rays,
@@ -121,21 +126,49 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 	if (bvh.intersect(ray, hitInfo)) {
 		drawRay(ray, glm::vec3(1));
 		glm::vec3 color(0);
-		for (const auto& light : scene.pointLights) {
-			if (checkShadow(hitInfo, light, bvh)) {
-				glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
-				glm::vec3 diffuse = hitInfo.material.kd * light.color * glm::dot(hitInfo.normal, lightDir);
+		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), glm::normalize(hitInfo.normal));
+		
+		// Loop over all the   point lights   that we are not in the shadow of
+		for (const auto& light : getVisablePointLights(hitInfo.hitPoint, scene, bvh)) {
 
-				color += diffuse + calcSpecular(4, bvh, light, ray, hitInfo, ray.origin);
-			}
-			else {
-				//Point is not in direct light
-				return glm::vec3(0.0f);
-			}
+			// calculate diffuse component of light
+			glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
+			glm::vec3 diffuse = hitInfo.material.kd * light.color * glm::dot(hitInfo.normal, lightDir);
+			
+			// calculate specular not recursive
+			float cosAngle = glm::dot(glm::normalize(ray.direction), glm::normalize(hitInfo.hitPoint - light.position));
+			cosAngle = std::max(cosAngle, 0.0f);
+			glm::vec3 spec = light.color * hitInfo.material.ks * std::pow(cosAngle, hitInfo.material.shininess);
+			
+			color += diffuse + spec;//calcSpecular(4, bvh, light, ray, hitInfo, ray.origin);
 		}
-		// Set the color of the pixel to white if the ray hits.
-		return glm::vec3(1.0f);
+
+		// Loop over all the   spherical lights   that we are not in the shadow of
+		for (const SoftShadow& light : getSoftlights(hitInfo.hitPoint, scene, bvh, 20)) {
+
+			// calculate diffuse component of light
+			glm::vec3 lightDir = glm::normalize(light.light.position - hitInfo.hitPoint);
+			glm::vec3 diffuse = hitInfo.material.kd * light.light.color * glm::dot(hitInfo.normal, lightDir);
+
+			// calculate specular not recursive
+			float cosAngle = glm::dot(glm::normalize(ray.direction), glm::normalize(hitInfo.hitPoint - light.light.position));
+			cosAngle = std::max(cosAngle, 0.0f);
+			glm::vec3 spec = light.light.color * hitInfo.material.ks * std::pow(cosAngle, hitInfo.material.shininess);
+
+			color += light.intensity*(diffuse + spec);//calcSpecular(4, bvh, light, ray, hitInfo, ray.origin);
+		}
+
+		// calculate reflected light
+		if (hitInfo.material.shininess > 0) {
+			// the ( + 0.01f * reflect ) is to prevent a surface reflecting itself
+			Ray refRay = { hitInfo.hitPoint + 0.01f * reflect, reflect };
+			// i don't know if this is the correct calculation but it looked nice
+			glm::vec3 refection = hitInfo.material.ks / hitInfo.material.shininess * getFinalColor(scene, bvh, refRay, level + 1);
+			color += refection;
+		}
+		return color;
 	}
+	// if the ray did not hit anything
 	else { 
 		// Draw a red debug ray if the ray missed.
 		drawRay(ray, glm::vec3(1.0f, 0.0f, 0.0f));

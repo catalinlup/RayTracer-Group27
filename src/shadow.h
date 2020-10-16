@@ -7,3 +7,9 @@
 bool isInHardShadow(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh);
 
 std::vector<PointLight> getVisablePointLights(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh);
+
+struct SoftShadow {
+	SphericalLight light;
+	float intensity;
+};
+std::vector<SoftShadow> getSoftlights(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount = 7);
