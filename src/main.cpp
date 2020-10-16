@@ -110,10 +110,36 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 
 }
 
+// used for debugging the textures
+static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray) {
+	HitInfo hitInfo;
+
+	if(bvh.intersect(ray, hitInfo)) {
+		Material mat = hitInfo.material;
+		if(mat.kdTexture) {
+			Image texture = mat.kdTexture.value();
+
+			// verticies
+			glm::vec2 textureCoordinate = hitInfo.texCoord;
+
+			//return glm::vec3(1);
+
+			// return the color corresponding to the texture
+			return texture.getPixel(textureCoordinate);
+		}
+
+		return glm::vec3(1);
+	}
+
+	return glm::vec3(0);
+}
 
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
-static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray)
+static glm::vec3 getFinalColor(const Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray)
 {
+	// for debugging purposes only
+	return getFinalColorNoRayTracingJustTextures(scene, bvh, ray);
+
 	HitInfo hitInfo;
 
 	/*For every light calulate the addition from the reflected rays,
@@ -210,17 +236,18 @@ int main(int argc, char** argv)
         // === Setup the UI ===
         ImGui::Begin("Final Project - Part 2");
         {
-            constexpr std::array items { "SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Monkey", "Dragon", /* "AABBs",*/ "Spheres", /*"Mixed",*/ "Custom" };
-            if (ImGui::Combo("Scenes", reinterpret_cast<int*>(&sceneType), items.data(), int(items.size()))) {
-                optDebugRay.reset();
+			constexpr std::array items{"SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Monkey", "Teapot", "Dragon", /* "AABBs",*/ "Spheres", /*"Mixed",*/ "Custom"};
+			if (ImGui::Combo("Scenes", reinterpret_cast<int *>(&sceneType), items.data(), int(items.size())))
+			{
+				optDebugRay.reset();
                 scene = loadScene(sceneType, dataPath);
                 bvh = BoundingVolumeHierarchy(&scene);
                 if (optDebugRay) {
                     HitInfo dummy {};
                     bvh.intersect(*optDebugRay, dummy);
                 }
-            }
-        }
+			}
+		}
         {
             constexpr std::array items { "Rasterization", "Ray Traced" };
             ImGui::Combo("View mode", reinterpret_cast<int*>(&viewMode), items.data(), int(items.size()));
