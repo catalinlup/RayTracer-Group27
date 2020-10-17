@@ -7,6 +7,30 @@
 #include <glm/glm.hpp>
 #include "draw.h"
 
+// check if one point can see an other
+bool cansee(const glm::vec3& p1, const glm::vec3& p2, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
+	glm::vec3 o = p1;
+	glm::vec3 d = p2 - p1;
+	float distance = glm::length(d);
+	d = glm::normalize(d);
+	o += SHADOW_ERROR_OFFSET * d;
+	Ray ray = { o, d };
+
+	HitInfo hitInfo;
+	bool hit = bvh.intersect(ray, hitInfo);
+
+	if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
+		drawRay(ray, glm::vec3(0.5f, 1.0f, 0.5f));
+		return true;
+	}
+	else {
+		drawRay(ray, glm::vec3(0.8f, 0.2f, 0.0f));
+		return false;
+	}
+}
+
+
+
 // Check if the given point is in a hard shadow.
 // When there are multyple light scources the function only returns true if the point can not see any point light.
 bool isInHardShadow(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
@@ -41,37 +65,23 @@ bool isInHardShadow(const glm::vec3 point, const Scene& scene, const BoundingVol
 }
 
 // Returns a list of PointLights that illuminate the given point.
-std::vector<PointLight> getVisablePointLights(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
+std::vector<Lighting> getPointLights(const HitInfo& point, const glm::vec3 reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
 
-	std::vector<PointLight> visibleLights;
+	std::vector<Lighting> visibleLights;
 
 	// check if the point can see any light
 	for (const PointLight& light : scene.pointLights) {
 
-		// calculate the ray
-		glm::vec3 o = point;
-		glm::vec3 d = light.position - point;
-		float distance = glm::length(d);
-		d = glm::normalize(d);
-		o += SHADOW_ERROR_OFFSET * d;
-		Ray ray = { o, d };
-		drawRay(ray, glm::vec3(0.5f));
-
-		// see if it hit somthing
-		HitInfo hitInfo;
-		bool hit = bvh.intersect(ray, hitInfo);
-
 		// the ray hit nothing or the hit was only after the light
-		if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
-			// debug ray when the point is illuminated
-			drawRay(ray, glm::vec3(0.5f, 1.0f, 0.5f));
-
+		if (cansee(point.hitPoint, light.position, scene, bvh)) {
 			// store the light scources that we can see
-			visibleLights.push_back(light);
-		}
-		else {
-			// debug ray when the point is in shadow
-			drawRay(ray, glm::vec3(0.8f, 0.2f, 0.0f));
+			Lighting l;
+			l.color = light.color;
+			l.position = light.position;
+			l.intensity = 1;
+			l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
+			l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
+			visibleLights.push_back(l);
 		}
 	}
 	return visibleLights;
@@ -83,13 +93,13 @@ glm::mat3 rotatetionMatrix(const float angle, const glm::vec3 axis) {
 	return glm::mat3(1) + C * std::sin(angle) + C * C * (1 - std::cos(angle));
 }
 // returns a list of visable light scoures and how mutch of that lightscource is visable
-std::vector<SoftShadow> getSoftlights(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount) {
-	std::vector<SoftShadow> lights;
+std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount) {
+	std::vector<Lighting> lights;
 	for (const SphericalLight& light : scene.sphericalLight) {
 
 		// calculate the starting position of the rays to the light
-		glm::vec3 o = point;
-		glm::vec3 d = light.position - point;
+		glm::vec3 o = point.hitPoint;
+		glm::vec3 d = light.position - point.hitPoint;
 		float distance = glm::length(d);
 		d = glm::normalize(d);
 		o += SHADOW_ERROR_OFFSET * d;
@@ -141,9 +151,87 @@ std::vector<SoftShadow> getSoftlights(const glm::vec3 point, const Scene& scene,
 
 		// save the visable lights
 		if (hits > 0) {
-			lights.push_back({ light, hits / (float)rayCount });
+			// setting all the properites of this light
+			Lighting l;
+			l.color = light.color;
+			l.intensity = hits / (float)rayCount;
+			l.position = light.position;
+			l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
+			l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
+			lights.push_back(l);
 
 		}
 	}
+	return lights;
+}
+
+// returns a list of all spotlights that iluminate a point
+std::vector<Lighting> getSpotLichts(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
+	std::vector<Lighting> lights;
+
+	for (const SpotLight& light : scene.spotLight) {
+
+		// if the point is in the beam of the spot light
+		if (glm::dot(glm::normalize(light.direction), glm::normalize(point.hitPoint - light.position)) > std::cos(glm::radians(light.angle))) {
+
+			// check if the path is not obstructed
+			if (cansee(point.hitPoint, light.position, scene, bvh)) {
+				// setting all the properites of this light
+				Lighting l;
+				l.color = light.color;
+				l.position = light.position;
+				l.intensity = 1;
+				l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
+				l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
+				lights.push_back(l);
+			}
+		}
+	}
+
+	return lights;
+}
+
+
+std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount1D) {
+	std::vector<Lighting> lights;
+
+	for (const PlaneLight& light : scene.planeLight) {
+		float hit = 0;
+		float maxCosAngle = 0; // angle for specularity so that the specular highlight will be square
+		glm::vec3 dx = (1.0f / (rayCount1D-1)) * (light.width); // split the width and hight so that i can cast multype rays
+		glm::vec3 dy = (1.0f / (rayCount1D-1)) * (light.height);
+		glm::vec3 py = light.position;
+		glm::vec3 normal = glm::normalize(glm::cross(light.width, light.height));
+
+		// optimization so only points in front of the light get checked whith raytacing
+		if (glm::dot(glm::normalize(point.hitPoint - (light.position+0.5f*(light.width+light.height))), normal) > 0) {
+			// loop over points on the light
+			for (int i = 0; i < rayCount1D; i++) {
+				glm::vec3 px = py;
+				for (int j = 0; j < rayCount1D; j++) {
+					// if light ray not obstructed
+					if (cansee(point.hitPoint, px, scene, bvh)) {
+						// becouse of this(the hit calculation) you dont later need to multyply by the cosine of the angle(normal and light dir)
+						hit += std::max(glm::dot(glm::normalize(point.hitPoint - px), normal), 0.0f);
+						// find the smalledst angle to the light, so max cosine
+						maxCosAngle = std::max(maxCosAngle, glm::dot(glm::normalize(reflectdir), glm::normalize(px - point.hitPoint)));
+					}
+					px += dx;
+				}
+				py += dy;
+			}
+		}
+		if (hit > 0) {
+			// setting all the properites of this light
+			Lighting l;
+			l.color = light.color;
+			l.position = light.position;
+			l.intensity = hit / (float)(rayCount1D * rayCount1D); // this inclues the cosLightSurfaceAngle
+			l.cosLightSurfaceAngle = 1; 
+			l.cosLightSpecAngle = maxCosAngle;
+			lights.push_back(l);
+		}
+	}
+
 	return lights;
 }

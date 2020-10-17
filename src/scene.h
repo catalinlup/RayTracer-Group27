@@ -15,6 +15,7 @@ enum SceneType {
     Cube,
     CornellBox,
     CornellBoxSphericalLight,
+    CornellBoxPlaneLight,
     Monkey,
     Dragon,
     //AABBs,
@@ -50,6 +51,23 @@ struct SphericalLight {
     glm::vec3 color;
 };
 
+struct SpotLight {
+    glm::vec3 position;
+    glm::vec3 direction;
+    float angle;
+    glm::vec3 color;
+};
+
+struct PlaneLight {
+    glm::vec3 position;
+    glm::vec3 width;
+    glm::vec3 height;
+    glm::vec3 color;
+    inline glm::vec3 center() {
+        return position + 0.5f * (width + height);
+    }
+};
+
 struct Scene {
     std::vector<Mesh> meshes;
     std::vector<Sphere> spheres;
@@ -57,6 +75,8 @@ struct Scene {
 
     std::vector<PointLight> pointLights;
     std::vector<SphericalLight> sphericalLight;
+    std::vector<PlaneLight> planeLight;
+    std::vector<SpotLight> spotLight;
 };
 
 // Load a prebuilt scene.

@@ -12,6 +12,7 @@ void drawMesh(const Mesh& mesh);
 void drawSphere(const Sphere& sphere);
 void drawSphere(const glm::vec3& center, float radius, const glm::vec3& color = glm::vec3(1.0f));
 void drawAABB(const AxisAlignedBox& box, DrawMode drawMode = DrawMode::Filled, const glm::vec3& color = glm::vec3(1.0f), float transparency = 1.0f);
+void drawPlane(const glm::vec3& pos, const glm::vec3& w, const glm::vec3& h, const glm::vec3& color);
 
 void drawScene(const Scene& scene);
 

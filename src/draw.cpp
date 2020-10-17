@@ -80,6 +80,30 @@ void drawSphere(const glm::vec3& center, float radius, const glm::vec3& color /*
     glPopAttrib();
 }
 
+static void drawPlaneInternal(const glm::vec3& pos, const glm::vec3& w, const glm::vec3& h) {
+    glPushMatrix();
+    glm::vec3 normal = glm::normalize(glm::cross(w, h));
+    glBegin(GL_QUADS);
+    glNormal3f(normal.x, normal.y, normal.z);
+    glVertex3f(pos.x + h.x, pos.y + h.y, pos.z + h.z); //3
+    glVertex3f(pos.x + w.x+h.x, pos.y + w.y+h.y, pos.z + w.z+h.z); //2
+    glVertex3f(pos.x + w.x, pos.y + w.y, pos.z + w.z); //1
+    glVertex3f(pos.x, pos.y, pos.z); //0
+    glEnd();
+    glPopMatrix();
+}
+
+void drawPlane(const glm::vec3& pos, const glm::vec3& w, const glm::vec3& h, const glm::vec3& color)
+{
+    glPushAttrib(GL_ALL_ATTRIB_BITS);
+    glColor4f(color.r, color.g, color.b, 1.0f);
+    glPolygonMode(GL_FRONT, GL_FILL);
+    glPolygonMode(GL_BACK, GL_FILL);
+    
+    drawPlaneInternal(pos, w, h);
+    glPopAttrib();
+}
+
 static void drawAABBInternal(const AxisAlignedBox& box)
 {
     glPushMatrix();

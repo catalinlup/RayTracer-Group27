@@ -17,6 +17,8 @@ Scene loadScene(SceneType type, const std::filesystem::path& dataDir)
         auto subMeshes = loadMesh(dataDir / "cube.obj");
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
         scene.pointLights.push_back(PointLight { glm::vec3(-1, 1, -1), glm::vec3(1) });
+        scene.spotLight.push_back(SpotLight{ {-1.2,-1,-1}, {1,1.2,1}, 10, {1,1,1} });
+        //scene.planeLight.push_back(PlaneLight{ {-1.1, 1.1, -1.1} , {0,1,0}, {1,0,0}, {1,1,1} });
     } break;
     case CornellBox: {
         // Load a 3D model of a Dragon
@@ -29,6 +31,13 @@ Scene loadScene(SceneType type, const std::filesystem::path& dataDir)
         auto subMeshes = loadMesh(dataDir / "CornellBox-Mirror-Rotated.obj", true);
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
         scene.sphericalLight.push_back(SphericalLight { glm::vec3(0, 0.45f, 0), 0.1f, glm::vec3(1) }); // Light at the top of the box
+    } break;
+    case CornellBoxPlaneLight: {
+        // Load a 3D model of a Dragon
+        auto subMeshes = loadMesh(dataDir / "CornellBox-Mirror-Rotated.obj", true);
+        std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
+        scene.planeLight.push_back(PlaneLight{ glm::vec3(-0.1f, 0.63f, -0.1f), glm::vec3(0.15, -0.05, 0), glm::vec3(0, 0, 0.2), glm::vec3(1) });
+        //scene.sphericalLight.push_back(SphericalLight{ glm::vec3(0, 0.45f, 0), 0.1f, glm::vec3(1) }); // Light at the top of the box
     } break;
     case Monkey: {
         // Load a 3D model of a Dragon
