@@ -6,6 +6,7 @@
 #include "screen.h"
 #include "trackball.h"
 #include "window.h"
+#include "shadow.h"
 
 // Disable compiler warnings in third-party code (which we cannot change).
 DISABLE_WARNINGS_PUSH()
@@ -110,10 +111,24 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 
 }
 
+glm::vec3 calcColor(Lighting light, Material material) {
+	// difuse light
+	glm::vec3 diffuse = material.kd * light.color * light.intensity * light.cosLightSurfaceAngle;
+	//specular light
+	glm::vec3 spec = light.color * material.ks * std::pow(light.cosLightSpecAngle, material.shininess);
+	return diffuse + spec;
+}
 
+static int max_reflection_level = 5;
+static int sphere_light_ray_count = 10;
+static int plane_light_1D_ray_count = 3;
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
-static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray)
+static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int level=0)
 {
+	if (level == max_reflection_level) {
+		return glm::vec3(0);
+	}
+
 	HitInfo hitInfo;
 
 	/*For every light calulate the addition from the reflected rays,
@@ -121,21 +136,33 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 	if (bvh.intersect(ray, hitInfo)) {
 		drawRay(ray, glm::vec3(1));
 		glm::vec3 color(0);
-		for (const auto& light : scene.pointLights) {
-			if (checkShadow(hitInfo, light, bvh)) {
-				glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
-				glm::vec3 diffuse = hitInfo.material.kd * light.color * glm::dot(hitInfo.normal, lightDir);
-
-				color += diffuse + calcSpecular(4, bvh, light, ray, hitInfo, ray.origin);
-			}
-			else {
-				//Point is not in direct light
-				return glm::vec3(0.0f);
-			}
+		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), glm::normalize(hitInfo.normal));
+		
+		// Loop over all the lights that are not in shadow
+		for (const Lighting& light : getPointLights(hitInfo, reflect, scene, bvh)) {
+			color += calcColor(light, hitInfo.material);
 		}
-		// Set the color of the pixel to white if the ray hits.
-		return glm::vec3(1.0f);
+		for (const Lighting& light : getSpherelights(hitInfo, reflect, scene, bvh, sphere_light_ray_count)) {
+			color += calcColor(light, hitInfo.material);
+		}
+		for (const Lighting& light : getSpotLichts(hitInfo, reflect, scene, bvh)) {
+			color += calcColor(light, hitInfo.material);
+		}
+		for (const Lighting& light : getPlaneLights(hitInfo, reflect, scene, bvh, plane_light_1D_ray_count)) {
+			color += calcColor(light, hitInfo.material);
+		}
+
+		// calculate reflected light
+		if (hitInfo.material.ks.x > 0 || hitInfo.material.ks.y > 0 || hitInfo.material.ks.z > 0) {
+			// the ( + 0.01f * reflect ) is to prevent a surface reflecting itself
+			Ray refRay = { hitInfo.hitPoint + 0.01f * reflect, reflect };
+			// Calculate the color that is reflected
+			glm::vec3 refection = hitInfo.material.ks * getFinalColor(scene, bvh, refRay, level + 1);
+			color += refection;
+		}
+		return color;
 	}
+	// if the ray did not hit anything
 	else { 
 		// Draw a red debug ray if the ray missed.
 		drawRay(ray, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -210,7 +237,7 @@ int main(int argc, char** argv)
         // === Setup the UI ===
         ImGui::Begin("Final Project - Part 2");
         {
-            constexpr std::array items { "SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Monkey", "Dragon", /* "AABBs",*/ "Spheres", /*"Mixed",*/ "Custom" };
+            constexpr std::array items { "SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Dragon", /* "AABBs",*/ "Spheres", /*"Mixed",*/ "Custom" };
             if (ImGui::Combo("Scenes", reinterpret_cast<int*>(&sceneType), items.data(), int(items.size()))) {
                 optDebugRay.reset();
                 scene = loadScene(sceneType, dataPath);
@@ -235,6 +262,14 @@ int main(int argc, char** argv)
             }
             screen.writeBitmapToFile(outputPath / "render.bmp");
         }
+
+		if (ImGui::TreeNode("Ray count settings")) {
+			ImGui::SliderInt("Max reflections", &max_reflection_level, 1, 15);
+			ImGui::SliderInt("Sphere light rays", &sphere_light_ray_count, 1, 40);
+			ImGui::SliderInt("Plane light rays(1D)", &plane_light_1D_ray_count, 1, 6);
+			ImGui::TreePop();
+		}
+
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Text("Debugging");
@@ -250,7 +285,7 @@ int main(int argc, char** argv)
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Text("Lights");
-        if (!scene.pointLights.empty() || !scene.sphericalLight.empty()) {
+        if (!scene.pointLights.empty() || !scene.sphericalLight.empty() || !scene.spotLight.empty() || !scene.planeLight.empty()) {
             {
                 std::vector<std::string> options;
                 for (size_t i = 0; i < scene.pointLights.size(); i++) {
@@ -259,6 +294,12 @@ int main(int argc, char** argv)
                 for (size_t i = 0; i < scene.sphericalLight.size(); i++) {
                     options.push_back("Spherical Light " + std::to_string(i + 1));
                 }
+				for (size_t i = 0; i < scene.spotLight.size(); i++) {
+					options.push_back("Spot Light " + std::to_string(i + 1));
+				}
+				for (size_t i = 0; i < scene.planeLight.size(); i++) {
+					options.push_back("Plane Light " + std::to_string(i + 1));
+				}
 
                 std::vector<const char*> optionsPointers;
                 std::transform(std::begin(options), std::end(options), std::back_inserter(optionsPointers),
@@ -274,33 +315,65 @@ int main(int argc, char** argv)
                     if constexpr (std::is_same_v<std::decay_t<decltype(light)>, SphericalLight>) {
                         ImGui::DragFloat("Light radius", &light.radius, 0.01f, 0.01f, 0.5f);
                     }
+					if constexpr (std::is_same_v<std::decay_t<decltype(light)>, SpotLight>) {
+						ImGui::DragFloat("Max light angle", &light.angle, 0.5f, 1.0f, 20.0f);
+						ImGui::DragFloat3("Light direction", glm::value_ptr(light.direction), 0.01f, -1.0f, 1.0f);
+					}
+					if constexpr (std::is_same_v<std::decay_t<decltype(light)>, PlaneLight>) {
+						ImGui::DragFloat3("Width", glm::value_ptr(light.width), 0.01f, -3.0f, 3.0f);
+						ImGui::DragFloat3("Height", glm::value_ptr(light.height), 0.01f, -3.0f, 3.0f);
+					}
                 };
                 if (selectedLight < static_cast<int>(scene.pointLights.size())) {
                     // Draw a big yellow sphere and then the small light sphere on top.
                     showLightOptions(scene.pointLights[selectedLight]);
-                } else {
+                }
+				else if (selectedLight < static_cast<int>(scene.pointLights.size()+scene.sphericalLight.size())) {
                     // Draw a big yellow sphere and then the smaller light sphere on top.
                     showLightOptions(scene.sphericalLight[selectedLight - scene.pointLights.size()]);
                 }
+				else if (selectedLight < static_cast<int>(scene.pointLights.size() + scene.sphericalLight.size() + scene.spotLight.size() )) {
+					showLightOptions(scene.spotLight[selectedLight - (scene.pointLights.size() + scene.sphericalLight.size())]);
+				}
+				else {
+					showLightOptions(scene.planeLight[selectedLight - (scene.pointLights.size() + scene.sphericalLight.size() + scene.spotLight.size())]);
+				}
             }
         }
-
-        if (ImGui::Button("Add point light")) {
-            scene.pointLights.push_back(PointLight { glm::vec3(0.0f), glm::vec3(1.0f) });
-            selectedLight = int(scene.pointLights.size() - 1);
-        }
-        if (ImGui::Button("Add spherical light")) {
-            scene.sphericalLight.push_back(SphericalLight { glm::vec3(0.0f), 0.1f, glm::vec3(1.0f) });
-            selectedLight = int(scene.pointLights.size() + scene.sphericalLight.size() - 1);
-        }
-        if (ImGui::Button("Remove selected light")) {
-            if (selectedLight < static_cast<int>(scene.pointLights.size())) {
-                scene.pointLights.erase(std::begin(scene.pointLights) + selectedLight);
-            } else {
-                scene.sphericalLight.erase(std::begin(scene.sphericalLight) + (selectedLight - scene.pointLights.size()));
-            }
-            selectedLight = 0;
-        }
+		if (ImGui::TreeNode("Add/remove light")) {
+			if (ImGui::Button("Add point light")) {
+				scene.pointLights.push_back(PointLight{ glm::vec3(0.0f), glm::vec3(1.0f) });
+				selectedLight = int(scene.pointLights.size() - 1);
+			}
+			if (ImGui::Button("Add spherical light")) {
+				scene.sphericalLight.push_back(SphericalLight{ glm::vec3(0.0f), 0.1f, glm::vec3(1.0f) });
+				selectedLight = int(scene.pointLights.size() + scene.sphericalLight.size() - 1);
+			}
+			if (ImGui::Button("Add spot light")) {
+				scene.spotLight.push_back(SpotLight{ glm::vec3(0.0f), glm::vec3(1), 10, glm::vec3(1.0f) });
+				selectedLight = int(scene.pointLights.size() + scene.sphericalLight.size() + scene.spotLight.size() - 1);
+			}
+			if (ImGui::Button("Add plane light")) {
+				scene.planeLight.push_back(PlaneLight{ glm::vec3(0.0f), glm::vec3(0.2f,0,0), glm::vec3(0,0,0.2f), glm::vec3(1.0f) });
+				selectedLight = int(scene.pointLights.size() + scene.sphericalLight.size() + scene.spotLight.size() + scene.planeLight.size() - 1);
+			}
+			if (ImGui::Button("Remove selected light")) {
+				if (selectedLight < static_cast<int>(scene.pointLights.size())) {
+					scene.pointLights.erase(std::begin(scene.pointLights) + selectedLight);
+				}
+				else if (selectedLight < static_cast<int>(scene.pointLights.size() + scene.sphericalLight.size())) {
+					scene.sphericalLight.erase(std::begin(scene.sphericalLight) + (selectedLight - scene.pointLights.size()));
+				}
+				else if (selectedLight < static_cast<int>(scene.pointLights.size() + scene.sphericalLight.size() + scene.spotLight.size())) {
+					scene.spotLight.erase(std::begin(scene.spotLight) + (selectedLight - (scene.pointLights.size() + scene.sphericalLight.size())));
+				}
+				else {
+					scene.planeLight.erase(std::begin(scene.planeLight) + (selectedLight - (scene.pointLights.size() + scene.sphericalLight.size() + scene.spotLight.size())));
+				}
+				selectedLight = 0;
+			}
+			ImGui::TreePop();
+		}
 
         // Clear screen.
         glClearDepth(1.0f);
@@ -387,7 +460,7 @@ static void renderOpenGL(const Scene& scene, const Trackball& camera, int select
 	for (const auto& light : scene.sphericalLight)
 		drawSphere(light.position, light.radius, light.color);
 
-	if (!scene.pointLights.empty() || !scene.sphericalLight.empty()) {
+	if (!scene.pointLights.empty() || !scene.sphericalLight.empty() || !scene.spotLight.empty() || !scene.planeLight.empty()) {
 		if (selectedLight < static_cast<int>(scene.pointLights.size())) {
 			// Draw a big yellow sphere and then the small light sphere on top.
 			const auto& light = scene.pointLights[selectedLight];
@@ -396,12 +469,27 @@ static void renderOpenGL(const Scene& scene, const Trackball& camera, int select
 			drawSphere(light.position, 0.01f, light.color);
 			glEnable(GL_DEPTH_TEST);
 		}
-		else {
+		else if(selectedLight < static_cast<int>(scene.pointLights.size() + scene.sphericalLight.size())) {
 			// Draw a big yellow sphere and then the smaller light sphere on top.
 			const auto& light = scene.sphericalLight[selectedLight - scene.pointLights.size()];
 			drawSphere(light.position, light.radius + 0.01f, glm::vec3(1, 1, 0));
 			glDisable(GL_DEPTH_TEST);
 			drawSphere(light.position, light.radius, light.color);
+			glEnable(GL_DEPTH_TEST);
+		}
+		else if (selectedLight < static_cast<int>(scene.pointLights.size() + scene.sphericalLight.size() + scene.spotLight.size())) {
+			// Draw a big yellow sphere and then the small light sphere on top.
+			const auto& light = scene.spotLight[selectedLight - (scene.pointLights.size() + scene.sphericalLight.size())];
+			drawSphere(light.position, 0.05f, glm::vec3(1, 1, 0));
+			glDisable(GL_DEPTH_TEST);
+			drawSphere(light.position, 0.01f, light.color);
+			glEnable(GL_DEPTH_TEST);
+		}
+		else {
+			const auto& light = scene.planeLight[selectedLight - (scene.pointLights.size() + scene.sphericalLight.size() + scene.spotLight.size())];
+			drawPlane(light.position, light.width, light.height, glm::vec3(1, 1, 0));
+			glDisable(GL_DEPTH_TEST);
+			drawSphere(light.position, 0.01f, light.color);
 			glEnable(GL_DEPTH_TEST);
 		}
 	}
@@ -429,6 +517,10 @@ static void renderOpenGL(const Scene& scene, const Trackball& camera, int select
 	for (const auto& light : scene.pointLights)
 		enableLight(light);
 	for (const auto& light : scene.sphericalLight)
+		enableLight(light);
+	for (const auto& light : scene.spotLight)
+		enableLight(light);
+	for (const auto& light : scene.planeLight)
 		enableLight(light);
 
 	// Draw the scene and the ray (if any).
