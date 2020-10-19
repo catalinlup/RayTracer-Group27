@@ -31,16 +31,16 @@ public:
     BvhObject(Sphere &sphere);
 
     // returns the AABB corresponding to the object
-    AxisAlignedBox &getAABB();
+    AxisAlignedBox getAABB() const;
 
     // returns a string with the object type, either 'triangle' or 'sphere'
-    std::string getType();
+    std::string getType() const;
 
     // returns the object's unique id
-    unsigned long long getId();
+    unsigned long long getId() const;
 
-    std::array<glm::vec3, 3> &getTriangle();
-    Sphere& getSphere();
+    std::array<glm::vec3, 3> getTriangle() const;
+    Sphere getSphere() const;
 
     // after calling the this function, the ids of the further declared objects will start again at 0.
     static void resetIdGenerator();
@@ -81,16 +81,16 @@ struct Node
     void addChild(BvhObject &object);
 
     // returns true if the node is a leaf, otherwise false
-    bool isLeaf();
+    bool isLeaf() const;
 
     // returns the id of the node
-    unsigned long long getId();
+    unsigned long long getId() const;
 
     // return the bounding box corresponding to this node
-    AxisAlignedBox &getBoundingBox();
+    AxisAlignedBox getBoundingBox() const;
 
     // returns the ids of the children of the node
-    std::vector<unsigned long long> getChildren();
+    std::vector<unsigned long long> getChildren() const;
 
 
 
@@ -128,6 +128,8 @@ public:
     // is on the correct side of the origin (the new t >= 0).
     bool intersect(Ray& ray, HitInfo& hitInfo) const;
 
+    bool getChildIntersection(std::vector<Node> children, Ray& ray, unsigned long long min_child_id, HitInfo& hitInfo, float& hit_t) const;
+
     // loads the data from the scene as BvhObjects
     void addBvhObjectsFromScene();
 
@@ -162,11 +164,11 @@ public:
 
         // Utility functions to get all keys and all values from a map
         template <typename K, typename V>
-        std::vector<K> getAllMapKeys(std::map<K, V> mp);
+        std::vector<K> getAllMapKeys(std::map<K, V> mp) const;
 
         template <typename K, typename V>
-        std::vector<V> getAllMapValues(std::map<K, V> mp);
+        std::vector<V> getAllMapValues(std::map<K, V> mp) const;
 
         template <typename K, typename V>
-        std::vector<V> getMapValuesOfKeys(std::map<K, V> mp, std::vector<K> keys);
+        std::vector<V> getMapValuesOfKeys(std::map<K, V> mp, std::vector<K> keys) const;
     };
