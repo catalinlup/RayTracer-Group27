@@ -9,7 +9,7 @@ Scene loadScene(SceneType type, const std::filesystem::path &dataDir)
     case SingleTriangle:
     {
         // Load a 3D model with a single triangle
-        auto subMeshes = loadMesh(dataDir / "tr_book.obj");
+        auto subMeshes = loadMesh(dataDir / "tr_def.obj");
         subMeshes[0].material.kd = glm::vec3(1.0f);
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
         scene.pointLights.push_back(PointLight{glm::vec3(-1, 1, -1), glm::vec3(1)});

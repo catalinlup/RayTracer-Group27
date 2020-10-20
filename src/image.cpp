@@ -2,6 +2,7 @@
 #include "disable_all_warnings.h"
 DISABLE_WARNINGS_PUSH()
 #include <stb_image.h>
+#include <stb_image_write.h>
 DISABLE_WARNINGS_POP()
 #include <cassert>
 #include <exception>
@@ -55,6 +56,18 @@ Image::Image(const std::filesystem::path& filePath)
     }
 
     stbi_image_free(pixels);
+
+    // add the current texture to the mipmap vector
+    _mipmap.push_back(m_pixels);
+    curr_height = m_height;
+    curr_width = m_width;
+
+
+    // if the mipmap can be built, build it
+    if(canUseMipmapping())
+        initMipmap();
+
+    printMipmap();
 }
 
 glm::vec3 Image::getPixel(const glm::vec2& textureCoordinates) const
@@ -77,9 +90,9 @@ glm::vec3 Image::getPixel(const glm::vec2& textureCoordinates) const
 
     // return the color based on one of the 2 filtering methods
     if(_filteringMethod == TextureFiltering::NearestNeighbor)
-        return nearestNeighbor(imageCoordinates);
+        return nearestNeighbor(imageCoordinates, 0, m_width, m_height);
     else if(_filteringMethod == TextureFiltering::Bilinear)
-        return bilinearInterpolation(imageCoordinates);
+        return bilinearInterpolation(imageCoordinates, 0, m_width, m_height);
 
     return glm::vec3(1);
     
@@ -155,19 +168,20 @@ float Image::clampRepeatTextureCoordinate(const float coordinate, OutOfBoundsRul
 }
 
 // turns the provided (x, y) coordinates into an index that can be used in the m_pixels vector.
-unsigned int Image::linearize2DCoordinates(unsigned int x, unsigned int y) const {
+unsigned int Image::linearize2DCoordinates(unsigned int x, unsigned int y, unsigned int width) const {
     // x is the column and y is the row!
-    return y * m_width + x;
+    return y * width + x;
 }   
 
 // returns the corresponding texture color after performing the nearest neighbor approximation
-glm::vec3 Image::nearestNeighbor(glm::vec2 imageCoordinates) const {
+glm::vec3 Image::nearestNeighbor(glm::vec2 imageCoordinates, int level, unsigned int width, unsigned int height) const
+{
     unsigned int x = round(imageCoordinates.x);
     unsigned int y = round(imageCoordinates.y);
 
     // correction, in case some error has occured, to avoid index out of bounds
-    if(x >= m_width) {
-        x = m_width - 1;
+    if(x >= width) {
+        x = width - 1;
         std::cerr << "Nearest Neighbor: The obtained x was larger than the image width" << std::endl;
     }
 
@@ -176,8 +190,8 @@ glm::vec3 Image::nearestNeighbor(glm::vec2 imageCoordinates) const {
         std::cerr << "Nearest Neighbor: The obtained x was smaller than 0" << std::endl;
     }
 
-    if (y >= m_height) {
-        y = m_height - 1;
+    if (y >= height) {
+        y = height - 1;
         std::cerr << "Nearest Neighbor: The obtained y was larger than the image height" << std::endl;
     }
 
@@ -186,11 +200,11 @@ glm::vec3 Image::nearestNeighbor(glm::vec2 imageCoordinates) const {
         std::cerr << "Nearest Neighbor: The obtained y was smaller than 0" << std::endl;
     }
 
-    return m_pixels[linearize2DCoordinates(x, y)];
+    return _mipmap[level][linearize2DCoordinates(x, y, width)];
 }
 
 // returns the corresponding texture color after applying bilinear interpolation
-glm::vec3 Image::bilinearInterpolation(glm::vec2 imageCoordinates) const
+glm::vec3 Image::bilinearInterpolation(glm::vec2 imageCoordinates, int level, unsigned int width, unsigned int height) const
 {
     float x_low = std::floor(imageCoordinates.x);
     float x_high = std::ceil(imageCoordinates.x);
@@ -200,10 +214,10 @@ glm::vec3 Image::bilinearInterpolation(glm::vec2 imageCoordinates) const
     float y_high = std::ceil(imageCoordinates.y);
 
 
-    glm::vec3 color_low_left = m_pixels[linearize2DCoordinates((unsigned int) x_low, (unsigned int) y_low)];
-    glm::vec3 color_low_right = m_pixels[linearize2DCoordinates((unsigned int) x_high, (unsigned int) y_low)];
-    glm::vec3 color_high_left = m_pixels[linearize2DCoordinates((unsigned int) x_low, (unsigned int) y_high)];
-    glm::vec3 color_high_right = m_pixels[linearize2DCoordinates((unsigned int) x_high, (unsigned int) y_high)];
+    glm::vec3 color_low_left = _mipmap[level][linearize2DCoordinates((unsigned int) x_low, (unsigned int) y_low, width)];
+    glm::vec3 color_low_right = _mipmap[level][linearize2DCoordinates((unsigned int)x_high, (unsigned int)y_low, width)];
+    glm::vec3 color_high_left = _mipmap[level][linearize2DCoordinates((unsigned int)x_low, (unsigned int)y_high, width)];
+    glm::vec3 color_high_right = _mipmap[level][linearize2DCoordinates((unsigned int)x_high, (unsigned int)y_high, width)];
 
     glm::vec3 color_low = linearInterpolation(x_low, x_high, color_low_left, color_low_right, imageCoordinates.x);
     glm::vec3 color_high = linearInterpolation(x_low, x_high, color_high_left, color_high_right, imageCoordinates.x);
@@ -218,4 +232,123 @@ glm::vec3 Image::linearInterpolation(float low, float high, glm::vec3 color_low,
     float c = (p - low) / (high - low);
 
     return (1 - c) * color_low + c * color_high;
+}
+
+
+// METHODS USED IN MIPMAPPING
+
+// creates a new texture of reduced resolution corresponding to the next level in the mipmap hierarchy
+void Image::getReducedResolutionTexture(int or_width, int or_height, std::vector<glm::vec3> &original, int &re_width, int &re_height, std::vector<glm::vec3> &reduced) const {
+    
+
+    re_height = or_height / 2;
+    re_width = or_width / 2;
+
+    
+    
+    for (int x = 0, re_x = 0; x + 1 < or_width && re_x < re_width; x += 2, re_x++) {
+        for (int y = 0, re_y = 0; y + 1 < or_height && re_y < re_height; y += 2, re_y++) {
+            int left_upper = linearize2DCoordinates(x, y, or_width);
+            int left_lower = linearize2DCoordinates(x, y + 1, or_width);
+            int right_upper = linearize2DCoordinates(x + 1, y, or_width);
+            int right_lower = linearize2DCoordinates(x + 1, y + 1, or_width);
+
+            glm::vec3 left_upper_color = original[left_upper];
+            glm::vec3 left_lower_color = original[left_lower];
+            glm::vec3 right_upper_color = original[right_upper];
+            glm::vec3 right_lower_color = original[right_lower];
+
+
+            reduced[linearize2DCoordinates(re_x, re_y, re_width)] = 0.25f * (left_upper_color  + left_lower_color + right_upper_color + right_lower_color);
+        }
+    }
+}
+
+// Returns true if the provided texture supports mipmapping, i.e. if the texture is 2^N x 2^M
+bool Image::canUseMipmapping() const {
+    return ((m_height & (m_height - 1)) == 0) && ((m_width & (m_width - 1)) == 0) && (m_width == m_height);
+}
+
+// initializes the mipmap if it is possible and if it wasn't already initialized
+void Image::initMipmap() {
+    if(!canUseMipmapping())
+        return;
+
+    if(isMipmapInit())
+        return;
+
+    _mipmap_init = true;
+
+
+
+    int k = m_width;
+    int w = m_width, h = m_height;
+
+    while(k > 1) {
+        std::vector<glm::vec3> current(w * h);
+
+        getReducedResolutionTexture(k, k, _mipmap[_mipmap.size() - 1], w, h, current);
+        _mipmap.push_back(current);
+
+        k /= 2;
+       
+    }
+
+}
+
+// Returns true if the mipmap is initialized, otherwise false
+bool Image::isMipmapInit() const {
+    return _mipmap_init;
+}
+
+// returns the number of mipmap levels, -1 if the mipmap is not initialized
+int Image::getNumMipmapLevels() const {
+    if(!isMipmapInit())
+        return -1;
+    return _mipmap.size();
+}
+
+// switches to another mipmap level. Returns false and does not do anything if it was unsuccesful, i.e. if the mipmap was not initialized or the level is invalid
+bool Image::switchToLevel(int level) {
+    if(!isMipmapInit())
+        return false;
+    
+    if(level < 0 || level >= getNumMipmapLevels())
+        return false;
+
+    curr_level = level;
+    curr_height = m_height >> level;
+    curr_width = m_width >> level;
+    curr_texture = _mipmap[level];
+
+    return true;
+}
+
+// returns the currently used level of the mipmap. 
+int Image::getCurrMipmapLevel() const {
+    return curr_level;
+}
+// used only for debugging purposes
+void Image::printMipmap() {
+    std::cout << "Number of levels " << getNumMipmapLevels() << std::endl;
+
+    int pixelData[m_width * m_height * 3];
+    
+
+    for(int level = 0; level < getNumMipmapLevels() - 1; level++) {
+       switchToLevel(level);
+        std::cout << curr_height << std::endl;
+        std::string filename = "level_";
+        filename.push_back((char)(level + '0'));
+        filename += ".bmp";
+
+        std::vector<glm::u8vec4> textureData8Bits(curr_texture.size());
+        std::transform(std::begin(curr_texture), std::end(curr_texture), std::begin(textureData8Bits),
+                       [](const glm::vec3 &color) {
+                           const glm::vec3 clampedColor = glm::clamp(color, 0.0f, 1.0f);
+                           return glm::u8vec4(glm::vec4(clampedColor, 1.0f) * 255.0f);
+                       });
+
+        stbi_write_bmp(filename.c_str(), curr_width, curr_height, 4, textureData8Bits.data());
+    }
 }

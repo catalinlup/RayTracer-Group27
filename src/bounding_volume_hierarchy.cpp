@@ -78,6 +78,10 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
     // for debugging only
     //printHierarchy();
 
+    // for(const auto& node : leafNodes) {
+    //     std::cout << node << " " << objects_at_node[node].size() << std::endl;
+    // }
+
     
 }
 
@@ -232,9 +236,21 @@ std::array<std::vector<unsigned long long>, 2> BoundingVolumeHierarchy::medianSp
     int medianPosition = axis_values.size() / 2;
     std::nth_element(axis_values.begin(), axis_values.begin() + medianPosition + 1, axis_values.end());
     // get the median value:
-    std::pair<float, unsigned long long> medianElement = axis_values[medianPosition];
+    std::pair<float, unsigned long long>& medianElement = axis_values[medianPosition];
 
-    // split the data in 2 halves, one smaller or equal to the median, the other larger
+    // std::cout << "Median " << medianElement.first << std::endl;
+    // for(int i = 0; i < axis_values.size(); i++) {
+    //     std::cout << axis_values[i].first << " ";
+    // }
+
+    // std::cout << std::endl;
+
+
+    // split the data in 2 halves, one smaller than the median, the other one larger
+    // if the median appears multiple times in the data, make sure that half of the medians end up in the first half
+    // and the other half in the second half
+
+   
 
     for(int i = 0; i < axis_values.size(); i++) {
         std::pair<float, unsigned long long> element = axis_values[i];
