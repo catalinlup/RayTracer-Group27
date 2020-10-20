@@ -160,13 +160,10 @@ glm::vec3 calcColor(Lighting light, Material material) {
 static int max_reflection_level = 5;
 static int sphere_light_ray_count = 10;
 static int plane_light_1D_ray_count = 3;
+static float refraction_factor = 0.8;
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
 static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int level=0)
 {
-	if (level == max_reflection_level) {
-		return glm::vec3(0);
-	}
-
 	HitInfo hitInfo;
 
 	/*For every light calulate the addition from the reflected rays,
@@ -174,7 +171,8 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 	if (bvh.intersect(ray, hitInfo)) {
 		drawRay(ray, glm::vec3(1));
 		glm::vec3 color(0);
-		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), glm::normalize(hitInfo.normal));
+		hitInfo.normal = glm::normalize(hitInfo.normal);
+		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), hitInfo.normal);
 		
 		// Loop over all the lights that are not in shadow
 		for (const Lighting& light : getPointLights(hitInfo, reflect, scene, bvh)) {
@@ -190,13 +188,54 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 			color += calcColor(light, hitInfo.material);
 		}
 
-		// calculate reflected light
-		if (hitInfo.material.ks.x > 0 || hitInfo.material.ks.y > 0 || hitInfo.material.ks.z > 0) {
-			// the ( + 0.01f * reflect ) is to prevent a surface reflecting itself
-			Ray refRay = { hitInfo.hitPoint + 0.01f * reflect, reflect };
-			// Calculate the color that is reflected
-			glm::vec3 refection = hitInfo.material.ks * getFinalColor(scene, bvh, refRay, level + 1);
-			color += refection;
+		if (level == max_reflection_level) {
+			return color;
+		}
+		
+		if (hitInfo.material.transparency == 1.0f) { // not tranparent
+			// calculate reflected light
+			if (hitInfo.material.ks.x > 0 || hitInfo.material.ks.y > 0 || hitInfo.material.ks.z > 0) {
+				// the ( + 0.01f * reflect ) is to prevent a surface reflecting itself
+				Ray refRay = { hitInfo.hitPoint + 0.01f * reflect, reflect };
+				// Calculate the color that is reflected
+				color += hitInfo.material.ks * getFinalColor(scene, bvh, refRay, level + 1);
+			}
+		}
+		else { // transparent
+			
+			// sources
+			// https://www.cs.drexel.edu/~david/Classes/Papers/p343-whitted.pdf
+			// https://en.wikipedia.org/wiki/Snell%27s_law#Vector_form
+			// https://www.youtube.com/watch?v=iKNSPETJNgo&list=PLujxSBD-JXgnGmsn7gEyN28P1DnRZG7qi&index=5
+			// https://stackoverflow.com/questions/29758545/how-to-find-refraction-vector-from-incoming-vector-and-surface-normal : cosI = abs(dot(normal, incident))
+
+
+			// calculate the refraction direction
+			glm::vec3 l = glm::normalize(ray.direction);
+			glm::vec3& n = hitInfo.normal;
+
+			float r = refraction_factor; // n1/n2 : indexes of refraction
+			float c = std::abs(glm::dot(l, n));
+
+			    // vector form of snell's law
+			glm::vec3 refract = r*l + ( r*c - std::sqrt(1 - r*r*(1 - c*c )) )*n; // std::sqrt might return NaN
+			refract = glm::normalize(refract);
+			
+
+			// calculate how how much light should reflect and how much should refract
+			float& R0 = hitInfo.material.transparency;//R0static; // probebility of reflection at 0 rad/deg to normal
+			    
+				// simplified fersnel equasion
+			float reflectionChance = R0 + (1-R0)*(std::pow(1-c,5));
+			float refractionChance = 1 - reflectionChance;
+			
+
+			// get the color the reflected and refrected rays see
+			color += reflectionChance * getFinalColor(scene, bvh, { hitInfo.hitPoint + 0.01f * reflect, reflect }, level + 1);
+			if (r * r * (1 - c * c) <= 1.0f) { // check if total internal reflection occures
+				color += refractionChance * getFinalColor(scene, bvh, { hitInfo.hitPoint + 0.01f * refract, refract }, level + 1);
+			}
+
 		}
 		return color;
 	}
@@ -285,7 +324,7 @@ int main(int argc, char** argv)
         // === Setup the UI ===
         ImGui::Begin("Final Project - Part 2");
         {
-            constexpr std::array items { "SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Dragon", /* "AABBs",*/ "Spheres", /*"Mixed",*/ "Custom" };
+            constexpr std::array items { "SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Teapot", "Dragon", /* "AABBs",*/ "Spheres", /*"Mixed",*/ "Custom" };
             if (ImGui::Combo("Scenes", reinterpret_cast<int*>(&sceneType), items.data(), int(items.size()))) {
                 optDebugRay.reset();
                 scene = loadScene(sceneType, dataPath);
@@ -315,6 +354,7 @@ int main(int argc, char** argv)
 			ImGui::SliderInt("Max reflections", &max_reflection_level, 1, 15);
 			ImGui::SliderInt("Sphere light rays", &sphere_light_ray_count, 1, 40);
 			ImGui::SliderInt("Plane light rays(1D)", &plane_light_1D_ray_count, 1, 6);
+			ImGui::SliderFloat("Refraction", &refraction_factor, 0, 2);
 			ImGui::TreePop();
 		}
 
