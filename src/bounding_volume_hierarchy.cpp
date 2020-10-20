@@ -250,18 +250,38 @@ std::array<std::vector<unsigned long long>, 2> BoundingVolumeHierarchy::medianSp
     // if the median appears multiple times in the data, make sure that half of the medians end up in the first half
     // and the other half in the second half
 
+    int numMedians = 0;
+
+    for(int i = 0; i < axis_values.size(); i++) {
+        if(std::abs(medianElement.first - axis_values[i].first) < 1e-7) { 
+            numMedians++;
+        }
+    }
    
+    int medianCnt = 0;
 
     for(int i = 0; i < axis_values.size(); i++) {
         std::pair<float, unsigned long long> element = axis_values[i];
 
         // if it is smaller, put it in the first half
-        if(element.first <= medianElement.first) {
+        if(element.first < medianElement.first) {
             firstHalf.push_back(element.second);
         }
         // else, put it in the second half
-        else {
+        else if (element.first > medianElement.first) {
             secondHalf.push_back(element.second);
+        }
+        // if the element is equal to the median
+        else {
+            
+            if(medianCnt < numMedians / 2) {
+                firstHalf.push_back(element.second);
+            }
+            else {
+                secondHalf.push_back(element.second);
+            }
+
+            medianCnt++;
         }
     }
 
