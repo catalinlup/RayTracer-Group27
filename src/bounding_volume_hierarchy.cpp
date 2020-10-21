@@ -308,7 +308,7 @@ bool BoundingVolumeHierarchy::getIntersection(Ray& ray, unsigned long long box_i
 					}
 				};
 				ray.t = minPrimitive;
-				hitInfo.hitPoint = ray.origin + ray.t * ray.direction; //update the hitPoint
+				hitInfo.hitPoint = ray.origin + std::clamp(ray.t, 0.0f, 100.0f) * ray.direction; //update the hitPoint
 				return true;
 			}
 			else { //There are no hits so the ray misses
@@ -324,15 +324,19 @@ bool BoundingVolumeHierarchy::getIntersection(Ray& ray, unsigned long long box_i
 			//get their intersections (if any)
 			bool left = getIntersection(ray, children_nodes[0].getId(), hitInfo);
 			float t_left = ray.t; 
+			HitInfo hit_left = hitInfo;
 			bool right = getIntersection(ray, children_nodes[1].getId(), hitInfo);
 			float t_right = ray.t;
+			HitInfo hit_right = hitInfo;
 
 			//return the smallest t_value
 			if (t_left < t_right) {
 				ray.t = t_left;
+				hitInfo = hit_left;
 			}
 			else {
 				ray.t = t_right;
+				hitInfo = hit_right;
 			}
 			//return bool value for hit
 			return left || right;
