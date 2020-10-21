@@ -29,6 +29,43 @@ bool cansee(const glm::vec3& p1, const glm::vec3& p2, const Scene& scene, const 
 	}
 }
 
+bool cansee(const glm::vec3& p1, const glm::vec3& p2, float& intensity, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
+	glm::vec3 o = p1;
+	glm::vec3 d = p2 - p1;
+	float distance = glm::length(d);
+	d = glm::normalize(d);
+	o += SHADOW_ERROR_OFFSET * d;
+	Ray ray = { o, d };
+	HitInfo hitInfo;
+
+	while (distance > SHADOW_ERROR_OFFSET) {
+		bool hit = bvh.intersect(ray, hitInfo);
+		if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
+			drawRay(ray, glm::vec3(0.5f, 1.0f, 0.5f));
+			return true;
+		}
+		else if (hitInfo.material.transparency!=1.0f) {
+			drawRay(ray, glm::vec3(0.3f, 0.3f, 8.0f));
+			distance -= ray.t;
+			ray.t = std::numeric_limits<float>::max();
+			ray.origin = hitInfo.hitPoint + SHADOW_ERROR_OFFSET * ray.direction;
+
+			float c = std::abs(glm::dot(ray.direction, hitInfo.normal));
+			// calculate how how much light should reflect and how much should refract
+			float& R0 = hitInfo.material.transparency;//R0static; // probebility of reflection at 0 rad/deg to normal
+				// simplified fersnel equasion : refraction
+			intensity *= 1 - (R0 + (1 - R0) * (std::pow(1 - c, 5)));
+
+		}
+		else {
+			drawRay(ray, glm::vec3(0.8f, 0.2f, 0.0f));
+			return false;
+		}
+	}
+	return true;
+	
+
+}
 
 
 // Check if the given point is in a hard shadow.
@@ -71,14 +108,14 @@ std::vector<Lighting> getPointLights(const HitInfo& point, const glm::vec3 refle
 
 	// check if the point can see any light
 	for (const PointLight& light : scene.pointLights) {
-
+		float intensity = 1.0f;
 		// the ray hit nothing or the hit was only after the light
-		if (cansee(point.hitPoint, light.position, scene, bvh)) {
+		if (cansee(point.hitPoint, light.position, intensity, scene, bvh)) {
 			// store the light scources that we can see
 			Lighting l;
 			l.color = light.color;
 			l.position = light.position;
-			l.intensity = 1;
+			l.intensity = intensity;
 			l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
 			l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
 			visibleLights.push_back(l);
@@ -97,33 +134,21 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 	std::vector<Lighting> lights;
 	for (const SphericalLight& light : scene.sphericalLight) {
 
-		// calculate the starting position of the rays to the light
-		glm::vec3 o = point.hitPoint;
-		glm::vec3 d = light.position - point.hitPoint;
-		float distance = glm::length(d);
-		d = glm::normalize(d);
-		o += SHADOW_ERROR_OFFSET * d;
+		float intensity = 1; // used for shadow of transparent objects
+		float intensitySum = 1;
+		int hits = 0; // the number of rays that hit the light
 
-		// ray for the center of the light
-		Ray ray = { o, d };
-
-		// the number of rays that hit the light
-		int hits = 0;
-
-		// see if the ray to the center hit somthing
-		HitInfo hitInfo;
-		bool hit = bvh.intersect(ray, hitInfo);
-
-		// the ray hit nothing or the hit was only after the light
-		if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
+		// check if the center of the light is visable
+		if (cansee(point.hitPoint, light.position, intensitySum, scene, bvh)) {
 			hits++;
 		}
 
+		// calculate direction to the center of the light ray
+		glm::vec3 d = light.position - point.hitPoint;
+		float distance = glm::length(d);
+		d = glm::normalize(d);
 
-		// thare are rayCount-1 rayes that go to the edge of the circle
-		glm::mat3 rotate = rotatetionMatrix(2 * 3.14159365358979f / (rayCount - 1), d); // rotaion matrix around the vector d
-
-		// a matrix that is not in line whith d
+		// a vector that is not in line whith d
 		glm::vec3 notd = d;
 		if (d.x != 0) {
 			notd.y = -d.x;
@@ -136,25 +161,46 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 
 		// perpendicular to the ray t the center of the light whith the same length as the radius of the light
 		glm::vec3 perp = glm::normalize(glm::cross(d, notd)) * light.radius; 
-
+#ifdef USE_MONTE_CARLO_INTEGRATION
+		glm::vec3 perp2 = glm::normalize(glm::cross(d, perp)) * light.radius;
+		float a = 1;
+		float b = 1;
+		for (int i = 0; i < rayCount - 1; i++) {
+			intensity = 1;
+			// get a random point on the light source
+			do {
+				a = (rand() / (float)RAND_MAX) * 2 - 1;
+				b = (rand() / (float)RAND_MAX) * 2 - 1;
+			} while (a * a + b * b > 1);
+			// see if the random point is visable
+			if (cansee(point.hitPoint, light.position + a * perp + b * perp2, intensity, scene, bvh)) {
+				hits++;
+				intensitySum += intensity;
+			}
+		}
+#else
+		// thare are rayCount-1 rayes that go to the edge of the circle
+		glm::mat3 rotate = rotatetionMatrix(2 * 3.14159365358979f / (rayCount - 1), d); // rotation matrix around the vector d
+		
 		// loop over all the rays that go the the edge of the circle
 		for (int i = 0; i < rayCount - 1; i++) {
-			Ray edgeRay = { o,d + perp };
-			bool hit = bvh.intersect(edgeRay, hitInfo);
-			if (!hit || (edgeRay.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
+			intensity = 1;
+			if (cansee(point.hitPoint, light.position + perp, intensity, scene, bvh)) {
 				hits++;
+				intensitySum += intensity;
 			}
-			drawRay(edgeRay, { 1.0f, 1.0f, 0.0f });
 			// rotate the perpenicular vector to be able to calculate the next position on the light where a ray must go
 			perp = rotate * perp;
 		}
+#endif
+		
 
 		// save the visable lights
 		if (hits > 0) {
 			// setting all the properites of this light
 			Lighting l;
 			l.color = light.color;
-			l.intensity = hits / (float)rayCount;
+			l.intensity = intensitySum / (float)rayCount;
 			l.position = light.position;
 			l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
 			l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
@@ -173,14 +219,14 @@ std::vector<Lighting> getSpotLichts(const HitInfo& point, const glm::vec3& refle
 
 		// if the point is in the beam of the spot light
 		if (glm::dot(glm::normalize(light.direction), glm::normalize(point.hitPoint - light.position)) > std::cos(glm::radians(light.angle))) {
-
+			float intensity = 1;
 			// check if the path is not obstructed
-			if (cansee(point.hitPoint, light.position, scene, bvh)) {
+			if (cansee(point.hitPoint, light.position, intensity, scene, bvh)) {
 				// setting all the properites of this light
 				Lighting l;
 				l.color = light.color;
 				l.position = light.position;
-				l.intensity = 1;
+				l.intensity = intensity;
 				l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
 				l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
 				lights.push_back(l);
@@ -197,7 +243,10 @@ std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& refl
 
 	for (const PlaneLight& light : scene.planeLight) {
 		float hit = 0;
+		int hitCount = 0;
 		float maxCosAngle = 0; // angle for specularity so that the specular highlight will be square
+		float intensitySum = 0; // used for shadow of transparent objects
+		float intensity = 1;
 		glm::vec3 dx = (1.0f / (rayCount1D-1)) * (light.width); // split the width and hight so that i can cast multype rays
 		glm::vec3 dy = (1.0f / (rayCount1D-1)) * (light.height);
 		glm::vec3 py = light.position;
@@ -205,14 +254,34 @@ std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& refl
 
 		// optimization so only points in front of the light get checked whith raytacing
 		if (glm::dot(glm::normalize(point.hitPoint - (light.position+0.5f*(light.width+light.height))), normal) > 0) {
+#ifdef USE_MONTE_CARLO_INTEGRATION
+			for (int i = 0; i < rayCount1D * rayCount1D; i++) {
+				float a = (rand() / (float)RAND_MAX);
+				float b = (rand() / (float)RAND_MAX);
+				intensity = 1;
+				// to random point on the light source to sample
+				glm::vec3 px = light.position + a * light.width + b * light.height;
+				if (cansee(point.hitPoint, px, intensity, scene, bvh)) {
+					intensitySum += intensity;
+					// becouse of this(the hit calculation) you dont later need to multyply by the cosine of the angle(normal and light dir)
+					hit += std::max(glm::dot(glm::normalize(point.hitPoint - px), normal), 0.0f) / glm::length(point.hitPoint - px);
+					hitCount++;
+					// find the smalledst angle to the light, so max cosine
+					maxCosAngle = std::max(maxCosAngle, glm::dot(glm::normalize(reflectdir), glm::normalize(px - point.hitPoint)));
+				}
+			}
+#else
 			// loop over points on the light
 			for (int i = 0; i < rayCount1D; i++) {
 				glm::vec3 px = py;
 				for (int j = 0; j < rayCount1D; j++) {
 					// if light ray not obstructed
-					if (cansee(point.hitPoint, px, scene, bvh)) {
+					intensity = 1;
+					if (cansee(point.hitPoint, px, intensity, scene, bvh)) {
+						intensitySum += intensity;
 						// becouse of this(the hit calculation) you dont later need to multyply by the cosine of the angle(normal and light dir)
 						hit += std::max(glm::dot(glm::normalize(point.hitPoint - px), normal), 0.0f) / glm::length(point.hitPoint - px);
+						hitCount++;
 						// find the smalledst angle to the light, so max cosine
 						maxCosAngle = std::max(maxCosAngle, glm::dot(glm::normalize(reflectdir), glm::normalize(px - point.hitPoint)));
 					}
@@ -220,13 +289,14 @@ std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& refl
 				}
 				py += dy;
 			}
+#endif
 		}
 		if (hit > 0) {
 			// setting all the properites of this light
 			Lighting l;
 			l.color = light.color;
 			l.position = light.position;
-			l.intensity = hit / (float)(rayCount1D * rayCount1D); // this inclues the cosLightSurfaceAngle
+			l.intensity = (intensitySum/hitCount) * hit / (float)(rayCount1D * rayCount1D); // this inclues the cosLightSurfaceAngle
 			l.cosLightSurfaceAngle = 1; 
 			l.cosLightSpecAngle = maxCosAngle;
 			lights.push_back(l);
