@@ -183,7 +183,7 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 		// m: how meny rigns, n how meny rays per ring
 		int m = rayCount/std::round(std::sqrt(2 * 3.14159365358979f * rayCount));
 		int n = rayCount / m;
-
+		rayCount = m * n + 1;
 
 		// thare are n rayes that go to the edge of the circle
 		glm::mat3 rotate = rotatetionMatrix(2 * 3.14159365358979f /n, d); // rotation matrix around the vector d
@@ -208,7 +208,7 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 			// setting all the properites of this light
 			Lighting l;
 			l.color = light.color;
-			l.intensity = intensitySum / (float)(m*n);
+			l.intensity = intensitySum / (float)(rayCount);
 			l.position = light.position;
 			l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
 			l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
