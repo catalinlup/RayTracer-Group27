@@ -37,6 +37,7 @@ Scene loadScene(SceneType type, const std::filesystem::path &dataDir)
         // Load a 3D model of a Cornell Box
         auto subMeshes = loadMesh(dataDir / "CornellBox-Mirror-Rotated.obj", true);
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
+        scene.spheres.push_back(Sphere{ glm::vec3(-0.2f, 0.15f, -0.25f), 0.2f, Material{glm::vec3(0), glm::vec3(0), 1, 0} });
         scene.sphericalLight.push_back(SphericalLight { glm::vec3(0, 0.45f, 0), 0.1f, glm::vec3(1) }); // Light at the top of the box
     } break;
     case CornellBoxPlaneLight: {
