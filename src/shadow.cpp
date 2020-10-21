@@ -212,7 +212,7 @@ std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& refl
 					// if light ray not obstructed
 					if (cansee(point.hitPoint, px, scene, bvh)) {
 						// becouse of this(the hit calculation) you dont later need to multyply by the cosine of the angle(normal and light dir)
-						hit += std::max(glm::dot(glm::normalize(point.hitPoint - px), normal), 0.0f);
+						hit += std::max(glm::dot(glm::normalize(point.hitPoint - px), normal), 0.0f) / glm::length(point.hitPoint - px);
 						// find the smalledst angle to the light, so max cosine
 						maxCosAngle = std::max(maxCosAngle, glm::dot(glm::normalize(reflectdir), glm::normalize(px - point.hitPoint)));
 					}
