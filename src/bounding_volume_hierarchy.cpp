@@ -136,7 +136,7 @@ void BoundingVolumeHierarchy::debugDraw(int level, bool showLeafNodes)
 		Node& n = nodes_to_draw[i];
 		// draw the AABB in green
 		if (!showLeafNodes)
-			drawAABB(n.getBoundingBox(), DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
+			drawAABB(n.getBoundingBox(), DrawMode::Wireframe, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
 	}
 
 	// if the option is active, draw all of the leaf nodes in red.
@@ -169,7 +169,7 @@ void BoundingVolumeHierarchy::addBvhObjectsFromScene() {
 			glm::vec3 v1 = mesh.vertices[tri[1]].p;
 			glm::vec3 v2 = mesh.vertices[tri[2]].p;
 
-			BvhObject obj(v0, v1, v2);
+			BvhObject obj(v0, v1, v2, mesh.material);
 
 			bvhObjects.insert(std::make_pair(obj.getId(), obj));
 		}
@@ -181,7 +181,7 @@ void BoundingVolumeHierarchy::addBvhObjectsFromScene() {
 	{
 		Sphere sphere = m_pScene->spheres[i];
 
-		BvhObject obj = BvhObject(sphere);
+		BvhObject obj = BvhObject(sphere, sphere.material);
 
 		bvhObjects.insert(std::make_pair(obj.getId(), obj));
 	}
@@ -269,117 +269,80 @@ int BoundingVolumeHierarchy::numLevels() const
 bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo) const
 {
 	bool hit = false;
-	Node root = nodes.at(_root_id);
-	AxisAlignedBox rootBox = root.getBoundingBox();
-	if (intersectRayWithShape(rootBox, ray)) {
-		//std::cout << "Hit with root box\n" << std::endl;
-		std::vector<unsigned long long> children_ids = root.getChildren();
-		std::vector<Node> children_nodes = getMapValuesOfKeys(nodes, children_ids);
-		float t_value = -1;
-		if (getChildIntersection(children_nodes, ray, 0, hitInfo, t_value)) {
-			ray.t = t_value;
-			hit = true;
-		}
-
+	if(getIntersection(ray, _root_id, hitInfo)) {
+		hit = true;
 	}
 	return hit;
-
-	//// Intersect with all triangles of all meshes.
-	//for (const auto& mesh : m_pScene->meshes) {
-	//    for (const auto& tri : mesh.triangles) {
-	//        const auto v0 = mesh.vertices[tri[0]];
-	//        const auto v1 = mesh.vertices[tri[1]];
-	//        const auto v2 = mesh.vertices[tri[2]];
-	//        if (intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo)) {
-	//            hitInfo.material = mesh.material;
-	//            hit = true;
-	//        }
-	//    }
-	//}
-	//// Intersect with spheres.
-	//for (const auto& sphere : m_pScene->spheres)
-	//    hit |= intersectRayWithShape(sphere, ray, hitInfo);
-	//return hit;
 }
 
-bool BoundingVolumeHierarchy::getChildIntersection(std::vector<Node> children, Ray& ray, unsigned long long min_child_id, HitInfo& hitInfo, float& hit_t) const {
-	std::vector<std::pair<int, float>> hitNodes;
-	float minBox = std::numeric_limits<float>::max();
-	float minPrimitive = std::numeric_limits<float>::max();
+bool BoundingVolumeHierarchy::getIntersection(Ray& ray, unsigned long long box_id, HitInfo& hitInfo) const {
+	Node node = nodes.at(box_id); 
+	ray.t = std::numeric_limits<float>::max(); //extend ray at infinity
+	if (intersectRayWithShape(node.getBoundingBox(), ray)) { //check if parent is intersected
+		if (node.isLeaf() && node.getChildren().size() > 0) { //if node is leaf we retrieve the primitives
 
-	for (auto& node : children) {
-		//Make ray go to infinity so we dont miss any points
-		ray.t = std::numeric_limits<float>::max();
-		if (intersectRayWithShape(node.getBoundingBox(), ray)) {
-			//ray.t is modified to the intersection point, If the node is a leaf that has children we
-			//should stop and check if the ray hits any primitives
-			if (node.isLeaf() && node.getChildren().size() > 0) {
-				//std::cout << "Found leaf" << std::endl;
-				std::vector<std::pair<unsigned long long, float>> hitPrimitives;
-				//Get all the actual objects that the leaf node contains
-				std::vector<unsigned long long> object_ids = node.getChildren();
-				std::vector<BvhObject> objects = getMapValuesOfKeys(bvhObjects, object_ids);
-				//Loop over the primitives and push all the intersecting primitives in a vector along with the t values
-				for (auto& primitive : objects) {
-					ray.t = std::numeric_limits<float>::max();
-					if (primitive.getType() == "triangle") {
-						std::array<glm::vec3, 3> triangle = primitive.getTriangle();
-						//Check for an intersection with a triangle
-						if (intersectRayWithTriangle(triangle[0], triangle[1], triangle[2], ray, hitInfo)) {
-							//Store the id and the t value
-							hitPrimitives.push_back(std::pair(primitive.getId(), ray.t));
-						}
-					}
-					else {
-						//Check for an intersection with a sphere
-						if (intersectRayWithShape(primitive.getSphere(), ray, hitInfo)) {
-							hitPrimitives.push_back(std::pair(primitive.getId(), ray.t));
-						}
+			std::vector<std::pair<Material, float>> hitPrimitives;
+			float minPrimitive = std::numeric_limits<float>::max(); 
+			std::vector<unsigned long long> object_ids = node.getChildren();
+			std::vector<BvhObject> objects = getMapValuesOfKeys(bvhObjects, object_ids);
+
+			for (auto& primitive : objects) { //primitive objects that are in the leaf node
+				ray.t = std::numeric_limits<float>::max();
+				if (primitive.getType() == "triangle") {
+					std::array<glm::vec3, 3> triangle = primitive.getTriangle();
+					if (intersectRayWithTriangle(triangle[0], triangle[1], triangle[2], ray, hitInfo)) {
+						hitPrimitives.push_back(std::pair(primitive.getMaterial(), ray.t)); //store a (material, t_value) pair for each triangle hit
 					}
 				}
-				//Check if there were hits or not
-				if (hitPrimitives.size() > 0) {
-					//We have hits so we should find the smallest one
-					for (auto& hit : hitPrimitives) {
-						if (hit.second < minPrimitive) {
-							minPrimitive = hit.second;
-						}
-					}
-					hit_t = minPrimitive;
-					return true;
-				}
-				//There are no hits so the ray misses
 				else {
-					return false;
+					if (intersectRayWithShape(primitive.getSphere(), ray, hitInfo)) {
+						hitPrimitives.push_back(std::pair(primitive.getMaterial(), ray.t)); //store a (material, t_value) pair for sphere each hit
+					}
 				}
 			}
-			//The node was not a leaf node so we should add it for comparison with the rest AABBs that will be found
-			//in the followinng iterations
-			else {
-				//std::cout << "Intersect with node " << node.getId() << " at " << ray.t << std::endl;
-				hitNodes.push_back(std::pair(node.getId(), ray.t));
+			if (hitPrimitives.size() > 0) { //check for any hits
+				for (auto& hit : hitPrimitives) {
+					if (hit.second < minPrimitive) {
+						minPrimitive = hit.second; //get the one closest to the camera
+						hitInfo.material = hit.first;
+					}
+				};
+				ray.t = minPrimitive;
+				hitInfo.hitPoint = ray.origin + ray.t * ray.direction; //update the hitPoint
+				return true;
+			}
+			else { //There are no hits so the ray misses
+				ray.t = std::numeric_limits<float>::max();
+				return false;
 			}
 		}
-	}
-	//Check if there were AABB intersections
-	if (hitNodes.size() > 0) {
-		//Get the closest AABB that the ray intersected with
-		for (auto& hit : hitNodes) {
-			if (hit.second < minBox && nodes.at(hit.first).getChildren().size() > 0) {
-				minBox = hit.second;
-				min_child_id = hit.first;
-			}
-		}
+		else { //node wasnt't a leaf so we get the 2 children
+			std::vector<unsigned long long> children_ids = node.getChildren(); //get the children ids
+			std::vector<Node> children_nodes = getMapValuesOfKeys(nodes, children_ids); //get the child nodes
+			ray.t = std::numeric_limits<float>::max();
 
-		std::vector<unsigned long long> children_ids = nodes.at(min_child_id).getChildren();
-		std::vector<Node> min_children_nodes = getMapValuesOfKeys(nodes, children_ids);
-		getChildIntersection(min_children_nodes, ray, min_child_id, hitInfo, hit_t);
+			//get their intersections (if any)
+			bool left = getIntersection(ray, children_nodes[0].getId(), hitInfo);
+			float t_left = ray.t; 
+			bool right = getIntersection(ray, children_nodes[1].getId(), hitInfo);
+			float t_right = ray.t;
+
+			//return the smallest t_value
+			if (t_left < t_right) {
+				ray.t = t_left;
+			}
+			else {
+				ray.t = t_right;
+			}
+			//return bool value for hit
+			return left || right;
+		}
 	}
-	//The ray missed the scene entireley with no AABB intersections
 	else {
 		return false;
 	}
 }
+
 
 // prints a textual representation of the hierarchy
 void BoundingVolumeHierarchy::printHierarchy() {
@@ -417,7 +380,7 @@ BvhObject::BvhObject() {
 
 
 // ctr triangle
-BvhObject::BvhObject(glm::vec3& v0, glm::vec3& v1, glm::vec3& v2) {
+BvhObject::BvhObject(glm::vec3& v0, glm::vec3& v1, glm::vec3& v2, Material mat) {
 
 	_id = id++;
 
@@ -433,6 +396,9 @@ BvhObject::BvhObject(glm::vec3& v0, glm::vec3& v1, glm::vec3& v2) {
 	// set the type of the object to triangle
 	_type = _TRIANGLE_TYPE;
 
+	// set the material of the triangle
+	_material = mat;
+
 	// store reference to the triangle
 	_triangle[0] = v0;
 	_triangle[1] = v1;
@@ -440,7 +406,7 @@ BvhObject::BvhObject(glm::vec3& v0, glm::vec3& v1, glm::vec3& v2) {
 }
 
 // cre sphere
-BvhObject::BvhObject(Sphere& sphere) {
+BvhObject::BvhObject(Sphere& sphere, Material mat) {
 
 	_id = id++;
 
@@ -454,9 +420,11 @@ BvhObject::BvhObject(Sphere& sphere) {
 	_boundingBox.upper.z = sphere.center.z + sphere.radius;
 
 
-
 	// set the type
 	_type = _SPHERE_TYPE;
+
+	// set the material of the sphere
+	_material = mat;
 
 	// store reference to the sphere
 	_sphere[0] = sphere;
@@ -485,8 +453,11 @@ std::string BvhObject::getType() const {
 }
 
 unsigned long long BvhObject::getId() const {
-
 	return _id;
+}
+
+Material BvhObject::getMaterial() const {
+	return _material;
 }
 
 // after calling the this function, the ids of the further declared objects will start again at 0.

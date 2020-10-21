@@ -25,10 +25,10 @@ public:
     BvhObject();
 
     // constructs an object from a triangle
-    BvhObject(glm::vec3 &v0, glm::vec3 &v1, glm::vec3 &v2);
+    BvhObject(glm::vec3 &v0, glm::vec3 &v1, glm::vec3 &v2, Material mat);
 
     // constructs an object of a sphere
-    BvhObject(Sphere &sphere);
+    BvhObject(Sphere &sphere, Material mat);
 
     // returns the AABB corresponding to the object
     AxisAlignedBox getAABB() const;
@@ -38,6 +38,8 @@ public:
 
     // returns the object's unique id
     unsigned long long getId() const;
+
+    Material getMaterial() const;
 
     std::array<glm::vec3, 3> getTriangle() const;
     Sphere getSphere() const;
@@ -58,6 +60,8 @@ private:
     unsigned long long _id;
 
     AxisAlignedBox _boundingBox;
+
+    Material _material;
 
     // use 'type' to distiguish between triangle and sphere
     std::array<glm::vec3, 3> _triangle; // stores the triangle, in case this object wraps around a triangle
@@ -128,7 +132,9 @@ public:
     // is on the correct side of the origin (the new t >= 0).
     bool intersect(Ray& ray, HitInfo& hitInfo) const;
 
-    bool getChildIntersection(std::vector<Node> children, Ray& ray, unsigned long long min_child_id, HitInfo& hitInfo, float& hit_t) const;
+    // Goes through the bvh tree recursively to find poitns of intersection
+    // with the meshes
+    bool getIntersection(Ray& ray, unsigned long long box_id, HitInfo& hitInfo) const;
 
     // loads the data from the scene as BvhObjects
     void addBvhObjectsFromScene();
