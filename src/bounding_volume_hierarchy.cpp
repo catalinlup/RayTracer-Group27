@@ -165,9 +165,9 @@ void BoundingVolumeHierarchy::addBvhObjectsFromScene() {
 	{
 		for (const auto& tri : mesh.triangles)
 		{
-			glm::vec3 v0 = mesh.vertices[tri[0]].p;
-			glm::vec3 v1 = mesh.vertices[tri[1]].p;
-			glm::vec3 v2 = mesh.vertices[tri[2]].p;
+			Vertex v0 = mesh.vertices[tri[0]];
+			Vertex v1 = mesh.vertices[tri[1]];
+			Vertex v2 = mesh.vertices[tri[2]];
 
 			BvhObject obj(v0, v1, v2, mesh.material);
 
@@ -289,8 +289,8 @@ bool BoundingVolumeHierarchy::getIntersection(Ray& ray, unsigned long long box_i
 			for (auto& primitive : objects) { //primitive objects that are in the leaf node
 				ray.t = std::numeric_limits<float>::max();
 				if (primitive.getType() == "triangle") {
-					std::array<glm::vec3, 3> triangle = primitive.getTriangle();
-					if (intersectRayWithTriangle(triangle[0], triangle[1], triangle[2], ray, hitInfo)) {
+					std::array<Vertex, 3> triangle = primitive.getTriangle();
+					if (intersectRayWithTriangleWithInterpolation(triangle[0], triangle[1], triangle[2], ray, hitInfo)) {
 						hitPrimitives.push_back(std::pair(primitive.getMaterial(), ray.t)); //store a (material, t_value) pair for each triangle hit
 					}
 				}
@@ -384,18 +384,18 @@ BvhObject::BvhObject() {
 
 
 // ctr triangle
-BvhObject::BvhObject(glm::vec3& v0, glm::vec3& v1, glm::vec3& v2, Material mat) {
+BvhObject::BvhObject(Vertex& v0, Vertex& v1, Vertex& v2, Material mat) {
 
 	_id = id++;
 
 	// construct AABB for the triangle
-	_boundingBox.lower.x = std::min(std::min(v0.x, v1.x), v2.x);
-	_boundingBox.lower.y = std::min(std::min(v0.y, v1.y), v2.y);
-	_boundingBox.lower.z = std::min(std::min(v0.z, v1.z), v2.z);
+	_boundingBox.lower.x = std::min(std::min(v0.p.x, v1.p.x), v2.p.x);
+	_boundingBox.lower.y = std::min(std::min(v0.p.y, v1.p.y), v2.p.y);
+	_boundingBox.lower.z = std::min(std::min(v0.p.z, v1.p.z), v2.p.z);
 
-	_boundingBox.upper.x = std::max(std::max(v0.x, v1.x), v2.x);
-	_boundingBox.upper.y = std::max(std::max(v0.y, v1.y), v2.y);
-	_boundingBox.upper.z = std::max(std::max(v0.z, v1.z), v2.z);
+	_boundingBox.upper.x = std::max(std::max(v0.p.x, v1.p.x), v2.p.x);
+	_boundingBox.upper.y = std::max(std::max(v0.p.y, v1.p.y), v2.p.y);
+	_boundingBox.upper.z = std::max(std::max(v0.p.z, v1.p.z), v2.p.z);
 
 	// set the type of the object to triangle
 	_type = _TRIANGLE_TYPE;
@@ -434,7 +434,7 @@ BvhObject::BvhObject(Sphere& sphere, Material mat) {
 	_sphere[0] = sphere;
 }
 
-std::array<glm::vec3, 3> BvhObject::getTriangle() const {
+std::array<Vertex, 3> BvhObject::getTriangle() const {
 	if (_type != _TRIANGLE_TYPE)
 		throw std::exception();
 
