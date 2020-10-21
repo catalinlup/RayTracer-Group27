@@ -332,7 +332,7 @@ int main(int argc, char** argv)
 			{
 				ImGui::Checkbox("Draw", &drawWhenInTextureMode);
 
-				constexpr std::array filtering_modes{"Nearest Neighbor", "Bilinear"};
+				constexpr std::array filtering_modes{"Nearest Neighbor", "Bilinear", "Nearest Level Mipmapping", "Bilinear Mipmapping", "Trilinear Mipmapping"};
 				ImGui::Combo("Filteting Mode", reinterpret_cast<int *>(&textureFiltering), filtering_modes.data(), int(filtering_modes.size()));
 
 				constexpr std::array oob_x{"Border", "Clamping", "Repeat"};

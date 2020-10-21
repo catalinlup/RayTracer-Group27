@@ -20,15 +20,16 @@ enum class TextureFiltering
 {
     NearestNeighbor,
     Bilinear,
-    MipMappingNearestLevel,
-    MipMappingTrilinearFiltering
+    MipMappingNearestLevelNearestNeighbor,
+    MipMappingNearestLevelBilinear,
+    Trilinear
 };
 
 class Image {
 public:
     Image(const std::filesystem::path& filePath);
 
-    glm::vec3 getPixel(const glm::vec2& textureCoordinates) const;
+    glm::vec3 getPixel(const glm::vec2 &textureCoordinates, int pixelDensity = 1000) const;
 
     // sets the border color of the image
     void setBorderColor(const glm::vec3 color);
@@ -62,7 +63,7 @@ private:
 
     // the texture coordinates are in the space [0, 1] x [0, 1], with (0, 0) being the lower-left corner, and (1, 1) the upper right corner
     // this functions maps them to the space [0, m_width] x [0, m_height]
-    glm::vec2 toImageCoordinates(glm::vec2 textureCoordinates) const;
+    glm::vec2 toImageCoordinates(glm::vec2 textureCoordinates, unsigned int level = 0) const;
 
     // applies the clamp and repeat procedures on the texture coordinates, on the basis of the selected modes of operations
     glm::vec2 dealWithClampingAndRepeating(glm::vec2 textureCoordinates) const;
@@ -87,8 +88,16 @@ private:
     // turns the provided image coordinates into an index for the pixel array using the nearest neighbor method
     glm::vec3 nearestNeighbor(glm::vec2 imageCoordinates, int level, unsigned int width, unsigned int height) const;
 
-    // turns the provided image coordinates into an index for the pixel array using the bilinear interpolation method
+    // make use of bilinear interpolation to get the color based on the image coordinates
     glm::vec3 bilinearInterpolation(glm::vec2 imageCoordinates, int level, unsigned int width, unsigned int height) const;
+
+    // basically nearest neighbot with mipmapping
+    glm::vec3 nearestLevelMipmapping(glm::vec2 imageCoordinates, unsigned int pixelDensity) const;
+
+    // same as nearestLevelMipmapping but with bilinear interpolation instead
+    glm::vec3 nearestLevelBilinear(glm::vec2 imageCoordinates, unsigned int pixelDensity) const;
+
+    glm::vec3 trilinearInterpolation(glm::vec2 imageCoordinates, unsigned int piexelDensity) const;
 
     // linearly intepolates between 2 colors
     // low - the lower position
@@ -98,11 +107,11 @@ private:
     // color_high - the color corresponding to the high position
     glm::vec3 linearInterpolation(float low, float high, glm::vec3 color_low, glm::vec3 color_high, float p) const;
 
-    int m_width, m_height;
+    int m_width, m_height; // should be unsigned, but this is how they were initially
     std::vector<glm::vec3> m_pixels;
 
-    int curr_level = 0; // the currently selected mimpap level. If no mipmapping is used, it is always set to 0.
-    int curr_width, curr_height; // the size of the currently drawn texture. If no mipmapping is used, it is always set m_width, m_height
+    unsigned int curr_level = 0; // the currently selected mimpap level. If no mipmapping is used, it is always set to 0.
+    unsigned int curr_width, curr_height; // the size of the currently drawn texture. If no mipmapping is used, it is always set m_width, m_height
     std::vector<glm::vec3> curr_texture; // texture that is currently selected for drawing. If no mipmapping is used, it is always set to m_pixels
 
     bool _mipmap_init = false; // true if the mipmap has been initialized
@@ -129,7 +138,14 @@ private:
 
     // creates a new texture of reduced resolution corresponding to the next level in the mipmap hierarchy
     // the texture should be 2^n x 2^n
-    void getReducedResolutionTexture(int or_width, int or_height, std::vector<glm::vec3>& original, int& re_width, int& re_height, std::vector<glm::vec3>& reduced) const;
+    void getReducedResolutionTexture(unsigned int or_width, unsigned int or_height, std::vector<glm::vec3> &original, unsigned int &re_width, unsigned int &re_height, std::vector<glm::vec3> &reduced) const;
+
+    // returns the width and the height corresponding to the provided level. If the level is invalid, 
+    // the width and the height remain unchanged
+    bool getWidthHeightForLevel(unsigned int &width, unsigned int &height, unsigned int level) const;
+
+    // returns true if the level is valid, otherwise false.
+    bool levelIsValid(unsigned int level) const;
 
     // if the mipmap can be build, and wasn't already initialized, initialize it
     void initMipmap(); 
@@ -138,8 +154,21 @@ private:
     void printMipmap() const;
 
     // switches to another mipmap level. Returns false and does not do anything if it was unsuccesful, i.e. if the mipmap was not initialized or the level is invalid
-    bool switchToLevel(int level);
+    bool switchToLevel(unsigned int level);
 
+    // compute the ratio between the density of the screen pixels and the density of the texture (the number of pixels inside the texture)
+    // returns a negative value in the case of an invalid level or uninitialized mipmap, or if the operation is unsuccesful for some other reasons.
+    float computePixelRatio(unsigned int level, unsigned int screenDensity) const;
+
+    // mode - 0, returns the level with the best resolution globally
+    // mode - 1, returns the level with the  best higher resolution
+    // mode - 2, returns the level with the best lower resolution
+    // if the operation is not succesful returns fals.
+    bool getBestLevelMipmap(unsigned int &best_level, unsigned int screenDensity, unsigned int mode) const;
+
+   
+
+    
 
     void printMipmap();
 };
