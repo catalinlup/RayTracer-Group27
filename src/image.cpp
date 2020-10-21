@@ -70,7 +70,7 @@ Image::Image(const std::filesystem::path& filePath)
     printMipmap();
 }
 
-glm::vec3 Image::getPixel(const glm::vec2& textureCoordinates, int pixelDensity) const
+glm::vec3 Image::getPixel(const glm::vec2& textureCoordinates, float pixelDensity) const
 {
     // deal with the out of bounds cases
 
@@ -248,7 +248,7 @@ glm::vec3 Image::bilinearInterpolation(glm::vec2 imageCoordinates, int level, un
 
 // makes use of nearest level mipmapping to get the color based on the image coordinates.
 // in case of an error, such as the mipmap not being initialized, returns a white pixel
-glm::vec3 Image::nearestLevelMipmapping(glm::vec2 textureCoordinates, unsigned int pixelDensity) const {
+glm::vec3 Image::nearestLevelMipmapping(glm::vec2 textureCoordinates, float pixelDensity) const {
     if(!isMipmapInit())
         return glm::vec3(1);
 
@@ -272,7 +272,7 @@ glm::vec3 Image::nearestLevelMipmapping(glm::vec2 textureCoordinates, unsigned i
 }
 
 // same as nearestLevelMipmapping but with bilinear interpolation instead
-glm::vec3 Image::nearestLevelBilinear(glm::vec2 textureCoordinates, unsigned int pixelDensity) const
+glm::vec3 Image::nearestLevelBilinear(glm::vec2 textureCoordinates, float pixelDensity) const
 {
     if (!isMipmapInit())
         return glm::vec3(1);
@@ -296,7 +296,7 @@ glm::vec3 Image::nearestLevelBilinear(glm::vec2 textureCoordinates, unsigned int
 }
 
 // performs mipmapping with trilinear interpolation
-glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, unsigned int pixelDensity) const
+glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, float pixelDensity) const
 {
     if (!isMipmapInit())
         return glm::vec3(1);
@@ -472,7 +472,7 @@ bool Image::getWidthHeightForLevel(unsigned int &width, unsigned int &height, un
 
 // compute the ratio between the number of screen pixels and the number of texture pixels for the provided mipmap level
 // returns a negative value in the case of an invalid level or uninitialized mipmap, or if the operation is unsuccesful for some other reasons.
-float Image::computePixelRatio(unsigned int level, unsigned int screenDensity) const {
+float Image::computePixelRatio(unsigned int level, float pixelDensity) const {
     if(!isMipmapInit())
         return -1.0f;
 
@@ -488,13 +488,13 @@ float Image::computePixelRatio(unsigned int level, unsigned int screenDensity) c
     if(w * h == 0)
         return -1.0f;
 
-    return ((float)screenDensity) / (float)(w * h);
+    return (pixelDensity) / (float)(w * h);
 }
 
 
 
 // returns the best mipmap level with a higher resolution than the screen resolution.
-bool Image::getBestLevelMipmap(unsigned int &best_level, unsigned int screenDensity, unsigned int mode = 0) const {
+bool Image::getBestLevelMipmap(unsigned int &best_level, float pixelDensity, unsigned int mode = 0) const {
     if(!isMipmapInit()) {
         std::cerr << "Warning! Mipmap not initialized!" << std::endl;
         return false;
@@ -503,7 +503,7 @@ bool Image::getBestLevelMipmap(unsigned int &best_level, unsigned int screenDens
     std::vector<std::pair<float, unsigned int>> distance_from_1;
 
     for(int level = 0; level < getNumMipmapLevels(); level++) {
-        float ratio = computePixelRatio(level, screenDensity);
+        float ratio = computePixelRatio(level, pixelDensity);
         if(mode == 0 || (mode == 1 && ratio >= 1) || (mode == 2 && ratio <= 1)) {
             float dist = std::abs(1 - ratio);
             distance_from_1.push_back(std::make_pair(dist, level));

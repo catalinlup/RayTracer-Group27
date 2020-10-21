@@ -29,7 +29,7 @@ class Image {
 public:
     Image(const std::filesystem::path& filePath);
 
-    glm::vec3 getPixel(const glm::vec2 &textureCoordinates, int pixelDensity = 1000) const;
+    glm::vec3 getPixel(const glm::vec2 &textureCoordinates, float pixelDensity = 1000.0f) const;
 
     // sets the border color of the image
     void setBorderColor(const glm::vec3 color);
@@ -92,12 +92,12 @@ private:
     glm::vec3 bilinearInterpolation(glm::vec2 imageCoordinates, int level, unsigned int width, unsigned int height) const;
 
     // basically nearest neighbot with mipmapping
-    glm::vec3 nearestLevelMipmapping(glm::vec2 imageCoordinates, unsigned int pixelDensity) const;
+    glm::vec3 nearestLevelMipmapping(glm::vec2 imageCoordinates, float pixelDensity) const;
 
     // same as nearestLevelMipmapping but with bilinear interpolation instead
-    glm::vec3 nearestLevelBilinear(glm::vec2 imageCoordinates, unsigned int pixelDensity) const;
+    glm::vec3 nearestLevelBilinear(glm::vec2 imageCoordinates, float pixelDensity) const;
 
-    glm::vec3 trilinearInterpolation(glm::vec2 imageCoordinates, unsigned int piexelDensity) const;
+    glm::vec3 trilinearInterpolation(glm::vec2 imageCoordinates, float piexelDensity) const;
 
     // linearly intepolates between 2 colors
     // low - the lower position
@@ -158,13 +158,13 @@ private:
 
     // compute the ratio between the density of the screen pixels and the density of the texture (the number of pixels inside the texture)
     // returns a negative value in the case of an invalid level or uninitialized mipmap, or if the operation is unsuccesful for some other reasons.
-    float computePixelRatio(unsigned int level, unsigned int screenDensity) const;
+    float computePixelRatio(unsigned int level, float pixelDensity) const;
 
     // mode - 0, returns the level with the best resolution globally
     // mode - 1, returns the level with the  best higher resolution
     // mode - 2, returns the level with the best lower resolution
     // if the operation is not succesful returns fals.
-    bool getBestLevelMipmap(unsigned int &best_level, unsigned int screenDensity, unsigned int mode) const;
+    bool getBestLevelMipmap(unsigned int &best_level, float pixelDensity, unsigned int mode) const;
 
    
 
