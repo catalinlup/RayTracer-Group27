@@ -26,14 +26,19 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
     addBvhObjectsFromScene();
 
     // BVH Tree Creation
+    constructBVH();
+    //constructBVHParallely();
 
+    
+    
+}
+
+void BoundingVolumeHierarchy::constructBVH() {
     // get all the bvhObjectIds
     std::vector<unsigned long long> bvhObjectIds = getAllMapKeys(bvhObjects);
 
-
     // create the root node at level 0
     _root_id = createNode(bvhObjectIds, 0);
-
 
     // create a queue for a BFS traversal of the tree
     std::queue<std::pair<unsigned long long, unsigned int>> node_level_queue;
@@ -42,23 +47,21 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
     node_level_queue.push(std::make_pair(_root_id, 0));
 
     // do a BFS traversal of the tree
-    while(node_level_queue.size() > 0) {
+    while (node_level_queue.size() > 0)
+    {
         std::pair<unsigned long long, unsigned int> node_level = node_level_queue.front();
         node_level_queue.pop();
-        
+
         unsigned long long node_id = node_level.first;
         unsigned int level = node_level.second;
-        Node& node = nodes[node_id];
-
+        Node &node = nodes[node_id];
 
         _max_level_achieved = std::max(_max_level_achieved, level);
 
-
-
         // if the node is a leaf, we should stop splitting
-        if(node.isLeaf())
+        if (node.isLeaf())
             continue;
-        
+
         // otherwise, split the objects of the node into 2 groups
         std::vector<unsigned long long> objectsAtNode = objects_at_node[node_id];
         std::array<std::vector<unsigned long long>, 2> first_second = medianSplit(objectsAtNode, level % 3);
@@ -74,17 +77,118 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
         node_level_queue.push(std::make_pair(node_left_id, level + 1));
         node_level_queue.push(std::make_pair(node_right_id, level + 1));
     }
-
     // for debugging only
     //printHierarchy();
+}
+
+// splits a node asynchronously
+// should only be called on non leaf nodes
+void BoundingVolumeHierarchy::splitNode(SplitState &split_state) {
+    auto halves = medianSplit(split_state.associated_objects, split_state.level % 3);
+    split_state.left_associated_objects = halves[0];
+    split_state.right_associated_objects = halves[1];
+
+
+    auto leftBvhObjects = getMapValuesOfKeys(bvhObjects, split_state.left_associated_objects);
+    split_state.left_node = Node(leftBvhObjects, (split_state.level == split_state.max_level) || (split_state.left_associated_objects.size() < 1));
+
+    auto rightBvhObjects = getMapValuesOfKeys(bvhObjects, split_state.right_associated_objects);
+    split_state.right_node = Node(rightBvhObjects, (split_state.level == split_state.max_level) || ((split_state.right_associated_objects.size() < 1)));
+
+    //std::cout << "Am fost aici " << split_state.right_node.getId() << std::endl;
+    split_state.node.addChild(split_state.left_node);
+    split_state.node.addChild(split_state.right_node);
+    
+    
+}
+// updates the memory corresponding to that node
+void BoundingVolumeHierarchy::updateMemory(unsigned int level, Node &node, std::vector<unsigned long long> &associated_objects) {
+    nodes.insert(std::make_pair(node.getId(), node));
+    nodes_at_level[level].push_back(node.getId());
+    objects_at_node.insert(std::make_pair(node.getId(), associated_objects));
+
+    if(node.isLeaf()) {
+        leafNodes.push_back(node.getId());
+
+        // add the bvh children
+        auto bvh_objects = getMapValuesOfKeys(bvhObjects, associated_objects);
+
+        for(int i = 0; i < bvh_objects.size(); i++) {
+            node.addChild(bvh_objects[i]);
+        }
+
+    }
+
+}
+
+void BoundingVolumeHierarchy::constructBVHParallely() {
+    // get all the bvhObjectIds
+    std::vector<unsigned long long> bvhObjectIds = getAllMapKeys(bvhObjects);
+
+    // create the root node at level 0
+    _root_id = createNode(bvhObjectIds, 0);
+    Node& root = nodes[_root_id];
+
+    std::cout << "root " << root.getId() << std::endl;
+
+    std::vector<std::thread> threads_queue;
+    std::queue<std::pair<unsigned int, SplitState>> index_state_queue;
+
+    // update the memory corresponding to the root node
+    updateMemory(0, root, bvhObjectIds);
+    // add thread and split state to the queue
+    SplitState root_split_state = SplitState(root, bvhObjectIds, 0, _max_level);
+    threads_queue.push_back(std::move(std::thread(std::bind(&BoundingVolumeHierarchy::splitNode, this, std::ref<SplitState>(root_split_state)))));
+    index_state_queue.push(std::make_pair(threads_queue.size() - 1, root_split_state));
+
+
+    while(!index_state_queue.empty()) {
+        // get the treads index and it's state
+        auto index_state = index_state_queue.front();
+        index_state_queue.pop();
+        int thread_index = index_state.first;
+        SplitState state = index_state.second;
+
+
+        // join the thread
+        if(threads_queue[thread_index].joinable()) {
+            threads_queue[thread_index].join();
+
+            std::cout << state.right_associated_objects.size() << std::endl;
+
+            // update the memory for the left node
+            updateMemory(state.level + 1, state.left_node, state.left_associated_objects);
+
+            // create thread to split the left node, as long as it is not a leaf
+            if(!state.left_node.isLeaf()) {
+                SplitState left_node_split_state = SplitState(state.left_node, state.left_associated_objects, state.level + 1, _max_level);
+                threads_queue.push_back(std::thread(std::bind(&BoundingVolumeHierarchy::splitNode,this, std::ref<SplitState>(left_node_split_state))));
+                index_state_queue.push(std::make_pair(threads_queue.size() - 1, left_node_split_state));
+            }
+
+            // update the memory for the right node
+            updateMemory(state.level + 1, state.right_node, state.right_associated_objects);
+
+            // create thread to split the left node, as long as it is not a leaf
+            if (!state.right_node.isLeaf())
+            {
+                SplitState right_node_split_state = SplitState(state.right_node, state.right_associated_objects, state.level + 1, _max_level);
+                threads_queue.push_back(std::thread(std::bind(&BoundingVolumeHierarchy::splitNode, this, std::ref<SplitState>(right_node_split_state))));
+                index_state_queue.push(std::make_pair(threads_queue.size() - 1, right_node_split_state));
+            }
+        }
+    }
+
 
     
+   
 }
 
 unsigned long long BoundingVolumeHierarchy::createNode(std::vector<unsigned long long>& bvhObjectIds, unsigned int level) {
 
     bool isLeaf = (bvhObjectIds.size() <= 1 || _max_level == level) ? true : false;
 
+    // lock access to map
     std::vector<BvhObject> objects = getMapValuesOfKeys(bvhObjects, bvhObjectIds);
 
     
@@ -232,20 +336,52 @@ std::array<std::vector<unsigned long long>, 2> BoundingVolumeHierarchy::medianSp
     int medianPosition = axis_values.size() / 2;
     std::nth_element(axis_values.begin(), axis_values.begin() + medianPosition + 1, axis_values.end());
     // get the median value:
-    std::pair<float, unsigned long long> medianElement = axis_values[medianPosition];
+    std::pair<float, unsigned long long>& medianElement = axis_values[medianPosition];
 
-    // split the data in 2 halves, one smaller or equal to the median, the other larger
+    // std::cout << "Median " << medianElement.first << std::endl;
+    // for(int i = 0; i < axis_values.size(); i++) {
+    //     std::cout << axis_values[i].first << " ";
+    // }
+
+    // std::cout << std::endl;
+
+
+    // split the data in 2 halves, one smaller than the median, the other one larger
+    // if the median appears multiple times in the data, make sure that half of the medians end up in the first half
+    // and the other half in the second half
+
+    int numMedians = 0;
+
+    for(int i = 0; i < axis_values.size(); i++) {
+        if(std::abs(medianElement.first - axis_values[i].first) < 1e-7) { 
+            numMedians++;
+        }
+    }
+   
+    int medianCnt = 0;
 
     for(int i = 0; i < axis_values.size(); i++) {
         std::pair<float, unsigned long long> element = axis_values[i];
 
         // if it is smaller, put it in the first half
-        if(element.first <= medianElement.first) {
+        if(element.first < medianElement.first) {
             firstHalf.push_back(element.second);
         }
         // else, put it in the second half
-        else {
+        else if (element.first > medianElement.first) {
             secondHalf.push_back(element.second);
+        }
+        // if the element is equal to the median
+        else {
+            
+            if(medianCnt < numMedians / 2) {
+                firstHalf.push_back(element.second);
+            }
+            else {
+                secondHalf.push_back(element.second);
+            }
+
+            medianCnt++;
         }
     }
 
@@ -441,6 +577,7 @@ bool Node::isLeaf() {
 
 void Node::addChild(Node& other) {
     if(isLeaf()) {
+        std::cerr << "Cannot add node to leaf" << std::endl;
         throw std::exception();
     }
 
@@ -450,6 +587,7 @@ void Node::addChild(Node& other) {
 
 void Node::addChild(BvhObject& object) {
     if (!isLeaf()){
+        std::cerr << "Cannot add object to non leaf" << std::endl;
         throw std::exception();
     }
 
