@@ -25,7 +25,7 @@ public:
     BvhObject();
 
     // constructs an object from a triangle
-    BvhObject(Vertex& v0, Vertex& v1, Vertex& v2, Material mat);
+    BvhObject(glm::vec3& v0, glm::vec3& v1, glm::vec3& v2, Material mat);
 
     // constructs an object of a sphere
     BvhObject(Sphere &sphere, Material mat);
@@ -41,7 +41,7 @@ public:
 
     Material getMaterial() const;
 
-    std::array<Vertex, 3> getTriangle() const;
+    std::array<glm::vec3, 3> getTriangle() const;
     Sphere getSphere() const;
 
     // after calling the this function, the ids of the further declared objects will start again at 0.
@@ -64,7 +64,7 @@ private:
     Material _material;
 
     // use 'type' to distiguish between triangle and sphere
-    std::array<Vertex, 3> _triangle; // stores the triangle, in case this object wraps around a triangle
+    std::array<glm::vec3, 3> _triangle; // stores the triangle, in case this object wraps around a triangle
     std::array<Sphere, 1> _sphere;      
 };
 
@@ -135,6 +135,14 @@ public:
     // Goes through the bvh tree recursively to find poitns of intersection
     // with the meshes
     bool getIntersection(Ray& ray, unsigned long long box_id, HitInfo& hitInfo) const;
+
+    // GoesThrough a leaf node to get all the bvh objects and check
+    // all of them for an intersection with the given ray
+    bool checkChildBvh(Ray& ray, Node node, HitInfo& hitInfo) const;
+
+    // Checks the given node if it's bounding box is intersectiing
+    // with the given ray
+    bool checkNode(Ray& ray, Node node) const;
 
     // loads the data from the scene as BvhObjects
     void addBvhObjectsFromScene();
