@@ -9,6 +9,10 @@
 #include <utility>
 #include <queue>
 #include <iostream>
+#include <thread>
+#include <future>
+#include <functional>
+
 
 // It would have made a lot more sense to have a BvhSphere class and a BvhTriangle class extend from BvhObject,
 // but unfortunetely, polymorphism cannot be achieved without pointers :(
@@ -19,7 +23,7 @@
 class BvhObject
 {
 
-    static unsigned long long id;
+static unsigned long long id;
 
 public:
     BvhObject();
@@ -116,8 +120,28 @@ private:
     AxisAlignedBox _boundingBox;
 };
 
+// represents a thread executing a split operation of some node.
+// use in the parallel bvh construction
+struct SplitState
+{
 
+    SplitState(Node &node, std::vector<unsigned long long> &associated_objects, int level, int max_level)
+    {
+        this->node = node;
+        this->associated_objects = associated_objects;
+        this->level = level;
+        this->max_level = max_level;
+    }
 
+    Node node;
+    std::vector<unsigned long long> associated_objects;
+    Node left_node;
+    std::vector<unsigned long long> left_associated_objects;
+    Node right_node;
+    std::vector<unsigned long long> right_associated_objects;
+    unsigned int level;
+    unsigned int max_level;
+};
 
 class BoundingVolumeHierarchy {
 public:
@@ -156,6 +180,16 @@ public:
 
         // prints a textual representation of the hierarchy tree. Useful for debugging
         void printHierarchy();
+        
+        // function that constructs the BVH
+        void constructBVH();
+
+        // Functions used in parallel BVH construction
+
+
+        void constructBVHParallely();
+
+        // end of the function used in parallel BVH construction
 
         unsigned int _max_level = 7;
 
@@ -185,4 +219,10 @@ public:
 
         template <typename K, typename V>
         std::vector<V> getMapValuesOfKeys(std::map<K, V> mp, std::vector<K> keys) const;
+        
+        // For parallel construction
+        // splits a node parallely
+        void splitNode(SplitState& split_state);
+        // updates the memory corresponding to that node
+        void updateMemory(unsigned int level, Node &node, std::vector<unsigned long long> &associated_objects);
     };

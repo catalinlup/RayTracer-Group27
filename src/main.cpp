@@ -75,6 +75,7 @@ static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const
 	return glm::vec3(0);
 }
 
+
 glm::vec3 calcColor(Lighting light, Material material) {
 	// difuse light
 	glm::vec3 diffuse = material.kd * light.color * light.intensity * light.cosLightSurfaceAngle;
@@ -258,7 +259,7 @@ int main(int argc, char** argv)
 			{
 				ImGui::Checkbox("Draw", &drawWhenInTextureMode);
 
-				constexpr std::array filtering_modes{"Nearest Neighbor", "Bilinear"};
+				constexpr std::array filtering_modes{"Nearest Neighbor", "Bilinear", "Nearest Level Mipmapping", "Bilinear Mipmapping", "Trilinear Mipmapping"};
 				ImGui::Combo("Filteting Mode", reinterpret_cast<int *>(&textureFiltering), filtering_modes.data(), int(filtering_modes.size()));
 
 				constexpr std::array oob_x{"Border", "Clamping", "Repeat"};
