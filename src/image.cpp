@@ -67,7 +67,7 @@ Image::Image(const std::filesystem::path& filePath)
         initMipmap();
 
     //used for debugging
-    printMipmap();
+    //printMipmap();
 }
 
 glm::vec3 Image::getPixel(const glm::vec2& textureCoordinates, float pixelDensity) const
