@@ -32,6 +32,13 @@ constexpr glm::ivec2 windowResolution{ 800, 800 };
 const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
+// Textures settings - used for debugging only!
+TextureFiltering textureFiltering{TextureFiltering::NearestNeighbor};
+OutOfBoundsRule outOfBoundsRuleX{OutOfBoundsRule::Border}; // Border, Clamp, Repeat
+OutOfBoundsRule outOfBoundsRuleY{OutOfBoundsRule::Border};
+glm::vec3 textureBorderColor(0);
+
+
 enum class ViewMode {
 	Rasterization = 0,
 	RayTracing = 1,
@@ -112,17 +119,15 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 
 }
 
-// Textures settings - used for debugging only!
-TextureFiltering textureFiltering{TextureFiltering::NearestNeighbor};
-OutOfBoundsRule outOfBoundsRuleX{OutOfBoundsRule::Border}; // Border, Clamp, Repeat
-OutOfBoundsRule outOfBoundsRuleY{OutOfBoundsRule::Border};
-glm::vec3 textureBorderColor(0);
+
+
+
 
 // used for debugging the textures
 static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray) {
 	HitInfo hitInfo;
 
-	
+
 
 	if(bvh.intersect(ray, hitInfo)) {
 		Material mat = hitInfo.material;
@@ -256,7 +261,17 @@ int main(int argc, char** argv)
     int bvhDebugLevel = 0;
     bool bvhShowLeafNodes {false}; // controls whether or not the leaf nodes should be highlighted in red
     bool debugBVH { false };
-    ViewMode viewMode { ViewMode::Rasterization };
+
+	// Bloom settings
+	bool liveDebug = false;
+	FilteringOption bloom_filtering_option = FilteringOption::None;
+	Kernel kernel = Kernel::BoxKernel;
+	int filterSize = 5; // 1 to 30
+	bool gammaCorrection = false;
+	float gammaValue = 2.2; // 1 to 5
+	float exposure = 0.5;	// 0 to 1
+
+	ViewMode viewMode { ViewMode::Rasterization };
 
 	bool drawWhenInTextureMode {false}; // controls whether the object is drawn or not when in texture mode. Used to reduce lag
 
@@ -274,6 +289,19 @@ int main(int argc, char** argv)
             case GLFW_KEY_ESCAPE: {
                 window.close();
             } break;
+			case GLFW_KEY_A: {
+				viewMode = ViewMode::Rasterization;
+				break;
+			}
+			case GLFW_KEY_B: {
+				viewMode = ViewMode::RayTracing;
+				break;
+			}
+			case GLFW_KEY_C: {
+				viewMode = ViewMode::Textures;
+				break;
+			}
+			
             };
         }
     });
@@ -316,6 +344,35 @@ int main(int argc, char** argv)
 			ImGui::SliderInt("Sphere light rays", &sphere_light_ray_count, 1, 40);
 			ImGui::SliderInt("Plane light rays(1D)", &plane_light_1D_ray_count, 1, 6);
 			ImGui::TreePop();
+		}
+
+		if(ImGui::TreeNode("Bloom Filtering Settings")) {
+			
+			ImGui::Checkbox("Live Debug", &liveDebug);
+
+			constexpr std::array filtering_modes{"None", "Bloom", "Bloom With Reinhard Tone Mapping", "Bloom With Exposure Based Tone Mapping", "Show Only Bright Areas (Debugging)", "Show Only Bright Areas and Apply Kernel (Debugging)"};
+			ImGui::Combo("Bloom Effect Options", reinterpret_cast<int *>(&bloom_filtering_option), filtering_modes.data(), int(filtering_modes.size()));
+
+			constexpr std::array kernel_modes{"Box Kernel"};
+			ImGui::Combo("Bloom Effect Options", reinterpret_cast<int *>(&kernel), kernel_modes.data(), int(kernel_modes.size()));
+
+			ImGui::SliderInt("FilterSize", &filterSize, 1, 300);
+
+			ImGui::Checkbox("Gamma Correction", &gammaCorrection);
+			ImGui::SliderFloat("Gamme Value", &gammaValue, 1, 5);
+
+			ImGui::SliderFloat("Exposure Level", &exposure, 0, 1);
+
+			ImGui::TreePop();
+
+			// setup the bloom filtering settings
+			screen.setBloomFilterLive(liveDebug);
+			screen.setBloomFilter(bloom_filtering_option);
+			screen.setKernel(kernel);
+			screen.setFilterSize(filterSize);
+			screen.enableGammaCorrection(gammaCorrection);
+			screen.setGammaValue(gammaValue);
+			screen.setExposure(exposure);
 		}
 
         ImGui::Spacing();
@@ -442,8 +499,9 @@ int main(int argc, char** argv)
         glClearDepth(1.0f);
         glClearColor(0.0, 0.0, 0.0, 0.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	
 
-        // Draw either using OpenGL (rasterization) or the ray tracing function.
+		// Draw either using OpenGL (rasterization) or the ray tracing function.
         switch (viewMode) {
         case ViewMode::Rasterization: {
             glPushAttrib(GL_ALL_ATTRIB_BITS);
@@ -458,6 +516,9 @@ int main(int argc, char** argv)
             glPopAttrib();
         } break;
         case ViewMode::RayTracing: {
+
+			
+
             screen.clear(glm::vec3(0.0f));
             renderRayTracing(scene, camera, bvh, screen);
             screen.setPixel(0, 0, glm::vec3(1.0f));
