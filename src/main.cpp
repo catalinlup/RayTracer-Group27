@@ -160,6 +160,7 @@ glm::vec3 calcColor(Lighting light, Material material) {
 static int max_reflection_level = 5;
 static int sphere_light_ray_count = 10;
 static int plane_light_1D_ray_count = 3;
+static int glossy_ray_count = 10;
 static float refraction_factor = 0.8;
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
 static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int level=0)
@@ -188,17 +189,76 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 			color += calcColor(light, hitInfo.material);
 		}
 
-		if (level == max_reflection_level) {
+		if (level >= max_reflection_level) {
 			return color;
 		}
 		
 		if (hitInfo.material.transparency == 1.0f) { // not tranparent
 			// calculate reflected light
 			if (hitInfo.material.ks.x > 0 || hitInfo.material.ks.y > 0 || hitInfo.material.ks.z > 0) {
+
+				glm::vec3 reflectColor = glm::vec3(0);
 				// the ( + 0.01f * reflect ) is to prevent a surface reflecting itself
 				Ray refRay = { hitInfo.hitPoint + 0.01f * reflect, reflect };
 				// Calculate the color that is reflected
-				color += hitInfo.material.ks * getFinalColor(scene, bvh, refRay, level + 1);
+				reflectColor += hitInfo.material.ks * getFinalColor(scene, bvh, refRay, level + 1);
+				
+				// prevent divide by 0 and allow for prefect reflections
+				if (hitInfo.material.shininess != 0) {
+
+					//hitInfo.material.shininess = shininess;
+
+					// a vector that is not in line whith reflect
+					glm::vec3 notr = reflect;
+					if (reflect.x != 0) {
+						notr.y = -reflect.x;
+						notr.x = reflect.y;
+					}
+					else {
+						notr.y = -reflect.z;
+						notr.z = reflect.y;
+					}
+					// right angle between reflection ray and pr1 and pr2
+					glm::vec3 pr1 = glm::cross(reflect, notr);
+					glm::vec3 pr2 = glm::cross(reflect, pr1);
+
+					// how mutch should the rayes diviate (cos(angle)^shininess > 0.5)
+					float d = std::pow(0.5f, -1 / (float)hitInfo.material.shininess) * std::sqrt(1-std::pow(0.5, 2/(float)hitInfo.material.shininess));
+
+					//srand(6437376437);
+					for (int i = 1; i < glossy_ray_count; i++) {
+						// find random direction
+						glm::vec3 shineDir;
+						float a, b;
+						int loopcount = 0; // prevent infinent loop
+						do {
+							do {
+								a = rand() / (float)RAND_MAX;
+								b = rand() / (float)RAND_MAX;
+							} while (a == 0 && b == 0 && a * a + b * b < 1);
+							a = (2 * a - 1) * d;
+							b = (2 * b - 1) * d;
+							shineDir = glm::normalize(reflect + a * pr1 + b * pr2);
+							loopcount++;
+						} while (glm::dot(shineDir, hitInfo.normal) <= 0 && loopcount<glossy_ray_count/4);
+						if (glm::dot(shineDir, hitInfo.normal) > 0) {
+							// cast the ray
+							Ray shineRay = { hitInfo.hitPoint + 0.01f * shineDir, shineDir };
+							glm::vec3 ctmp = getFinalColor(scene, bvh, shineRay, level + 1) *std::max(std::pow(glm::dot(reflect, shineDir), hitInfo.material.shininess), 0.0f);
+							//std::cout << "r_r: " << ctmp.r << std::endl;
+							reflectColor += ctmp;
+						}
+					}
+					//std::cout << "r_final: " << (glossColor / (float)glossrays).r << std::endl;
+					color += hitInfo.material.ks * reflectColor / (float)glossy_ray_count;
+
+				}
+				else {
+					color += hitInfo.material.ks * reflectColor;
+				}
+
+
+				
 			}
 		}
 		else { // transparent
@@ -352,8 +412,12 @@ int main(int argc, char** argv)
 
 		if (ImGui::TreeNode("Ray count settings")) {
 			ImGui::SliderInt("Max reflections", &max_reflection_level, 1, 15);
+
 			ImGui::SliderInt("Sphere light rays", &sphere_light_ray_count, 1, 40);
 			ImGui::SliderInt("Plane light rays(1D)", &plane_light_1D_ray_count, 1, 6);
+			
+			ImGui::SliderInt("Glossy reflection ray count", &glossy_ray_count, 1, 40);
+
 			ImGui::SliderFloat("Refraction", &refraction_factor, 0, 2);
 			ImGui::TreePop();
 		}
