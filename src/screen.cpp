@@ -169,6 +169,12 @@ void Screen::setKernel(Kernel kernel) {
     _kernel = kernel;
 }
 
+// sets the number of times the kernel should be applied. The default is 1
+void Screen::setKernelNumRepetitions(int repetitions) {
+    _kernel_num_repetitions = repetitions;
+    _kernel_num_repetitions = glm::max(1, _kernel_num_repetitions);
+}
+
 // configures the gamma value used in the gamma correction
 void Screen::setGammaValue(float gamma) {
     _gamma = gamma;
@@ -185,9 +191,16 @@ void Screen::setExposure(float exposure) {
     _exposure = exposure;
 }
 
+// sets the sigma value to be used in the gaussian blurr (default 2.0)
+void Screen::setSigma(float sigma) {
+    _sigma = sigma;
+    _sigma = glm::max(0.001f, _sigma);
+}
+
 // set the box filter size, the default value is 5
 void Screen::setFilterSize(int filterSize) {
     _filterSize = filterSize;
+    filterSize = glm::max(1, filterSize);
 }
 
 // applies the bloom effect on the texture data, based on the configured settings
@@ -216,7 +229,10 @@ void Screen::applyBloomEffect() {
     // can the parts of the image with brightness that is larger than 1
     std::vector<glm::vec3> lightImage;
     filterLightPixels(lightImage);
-    applyKernel(_kernel, lightImage, m_resolution.x, m_resolution.y);
+
+    // apply the kernel the configured number of times
+    for(int i = 1; i <= _kernel_num_repetitions; i++)
+        applyKernel(_kernel, lightImage, m_resolution.x, m_resolution.y);
 
     std::vector<glm::vec3> data_copied(m_textureData);
     addImages(data_copied, lightImage, m_textureData);
@@ -267,8 +283,10 @@ bool Screen::applyKernel(Kernel kernel, std::vector<glm::vec3> &image, int width
     for(int x = 0; x < width; x++) {
         for(int y = 0; y < height; y++) {
 
-            if(kernel == Kernel::BoxKernel)
+            if (kernel == Kernel::BoxKernel)
                 image[y * width + x] = boxKernel(x, y, _filterSize, source, width, height);
+            else if (kernel == Kernel::GaussianKernel)
+                image[y * width + x] = gaussianKernel(x, y, _filterSize, source, width, height);
         }
     }
 
@@ -277,7 +295,7 @@ bool Screen::applyKernel(Kernel kernel, std::vector<glm::vec3> &image, int width
 
 // implements a simple box kernel
 glm::vec3 Screen::boxKernel(int x, int y, int filterSize, std::vector<glm::vec3> &image, int width, int height) {
-    filterSize = glm::max(1, filterSize);
+
     glm::vec3 sum = glm::vec3(0.0f);
 
     for(int i = -filterSize; i < filterSize + 1; i++) {
@@ -289,6 +307,24 @@ glm::vec3 Screen::boxKernel(int x, int y, int filterSize, std::vector<glm::vec3>
     sum /= (2 * filterSize + 1) * (2 * filterSize + 1);
 
     return sum;
+}
+
+// implements a gaussian kernel
+glm::vec3 Screen::gaussianKernel(int x, int y, int filterSize, std::vector<glm::vec3> &image, int width, int height) {
+    glm::vec3 sum = glm::vec3(0.0f);
+
+    for(int i = -filterSize; i < filterSize + 1; i++) {
+        for(int j = -filterSize; j < filterSize + 1; j++) {
+            sum += gaussianFunction((float) i, (float) j) * getPixel(x + i, y + j, image);
+        }
+    }
+
+    return sum;
+}
+
+// computes the value of the 2d gaussian function with mean 0 and standard deviation _sigma
+float Screen::gaussianFunction(float x, float y) {
+    return (1 / (_sigma * _sigma * 2 * M_PI)) * glm::exp(- (x * x + y * y) / (2 * _sigma * _sigma));
 }
 
 // add the values of the 2 images of the same size

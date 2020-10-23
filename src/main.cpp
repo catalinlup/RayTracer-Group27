@@ -270,6 +270,8 @@ int main(int argc, char** argv)
 	bool gammaCorrection = false;
 	float gammaValue = 2.2; // 1 to 5
 	float exposure = 0.5;	// 0 to 1
+	float sigma = 2.0f;
+	int kernel_num_repetitions = 1;
 
 	ViewMode viewMode { ViewMode::Rasterization };
 
@@ -345,6 +347,14 @@ int main(int argc, char** argv)
 			ImGui::SliderInt("Plane light rays(1D)", &plane_light_1D_ray_count, 1, 6);
 			ImGui::TreePop();
 		}
+		
+		// Gamma correction 
+		ImGui::Checkbox("Gamma Correction", &gammaCorrection);
+		if(gammaCorrection)
+			ImGui::SliderFloat("Gamme Value", &gammaValue, 1, 5);
+
+		screen.enableGammaCorrection(gammaCorrection);
+		screen.setGammaValue(gammaValue);
 
 		if(ImGui::TreeNode("Bloom Filtering Settings")) {
 			
@@ -353,15 +363,17 @@ int main(int argc, char** argv)
 			constexpr std::array filtering_modes{"None", "Bloom", "Bloom With Reinhard Tone Mapping", "Bloom With Exposure Based Tone Mapping", "Show Only Bright Areas (Debugging)", "Show Only Bright Areas and Apply Kernel (Debugging)"};
 			ImGui::Combo("Bloom Effect Options", reinterpret_cast<int *>(&bloom_filtering_option), filtering_modes.data(), int(filtering_modes.size()));
 
-			constexpr std::array kernel_modes{"Box Kernel"};
-			ImGui::Combo("Bloom Effect Options", reinterpret_cast<int *>(&kernel), kernel_modes.data(), int(kernel_modes.size()));
+			constexpr std::array kernel_modes{"Box Kernel", "Gaussian Kernel"};
+			ImGui::Combo("Kernel", reinterpret_cast<int *>(&kernel), kernel_modes.data(), int(kernel_modes.size()));
 
 			ImGui::SliderInt("FilterSize", &filterSize, 1, 300);
+			ImGui::SliderInt("No. Kernel Repetitions", &kernel_num_repetitions, 1, 10);
+			if(kernel == Kernel::GaussianKernel) 
+				ImGui::SliderFloat("Sigma", &sigma, 0.1f, 5.0f);
 
-			ImGui::Checkbox("Gamma Correction", &gammaCorrection);
-			ImGui::SliderFloat("Gamme Value", &gammaValue, 1, 5);
 
-			ImGui::SliderFloat("Exposure Level", &exposure, 0, 1);
+			if(bloom_filtering_option == FilteringOption::BloomWithExposureHdr)
+				ImGui::SliderFloat("Exposure Level", &exposure, 0, 1);
 
 			ImGui::TreePop();
 
@@ -370,9 +382,9 @@ int main(int argc, char** argv)
 			screen.setBloomFilter(bloom_filtering_option);
 			screen.setKernel(kernel);
 			screen.setFilterSize(filterSize);
-			screen.enableGammaCorrection(gammaCorrection);
-			screen.setGammaValue(gammaValue);
+			screen.setKernelNumRepetitions(kernel_num_repetitions);
 			screen.setExposure(exposure);
+			screen.setSigma(sigma);
 		}
 
         ImGui::Spacing();

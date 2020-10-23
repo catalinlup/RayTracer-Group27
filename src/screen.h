@@ -11,6 +11,7 @@ DISABLE_WARNINGS_PUSH()
 DISABLE_WARNINGS_POP()
 #include <filesystem>
 #include <iostream>
+#include <cmath>
 
 enum class FilteringOption
 {
@@ -24,7 +25,8 @@ enum class FilteringOption
 };
 
 enum class Kernel {
-    BoxKernel
+    BoxKernel,
+    GaussianKernel
 };
 
 class Screen {
@@ -41,7 +43,6 @@ public:
     void draw();
 
 
-
     // controls weather or not the bloom filter should be used on the live output or not
     void setBloomFilterLive(bool bloomFilterLive);
 
@@ -54,11 +55,17 @@ public:
     // the default kernel is a box kernel
     void setKernel(Kernel kernel);
 
+    // sets the number of times the kernel should be applied. The default is 1
+    void setKernelNumRepetitions(int repetitions);
+
     // configures the gamma value used in the gamma correction
     void setGammaValue(float gamma);
 
     // set to true to enable gamma correction, false to disable it
     void enableGammaCorrection(float gammaCorrection);
+
+    // sets the sigma value to be used in the gaussian blurr (default 2.0)
+    void setSigma(float sigma);
 
     // set the exposure level for the exposure bloom filtering
     // the default is 0.5
@@ -84,6 +91,7 @@ private:
 
     FilteringOption _filtering_option = FilteringOption::None; // controls the bloom filter, the default is no bloom filtering
     Kernel _kernel = Kernel::BoxKernel; // the default is a box kernel
+    int _kernel_num_repetitions = 1; // the number of times the kernel is applied (the default is 1).
 
     float _gamma = 2.2f;
 
@@ -93,6 +101,9 @@ private:
     float _exposure = 0.5;
 
     int _filterSize = 5;
+
+    // the standard deviation to be used in the gaussian kernel (default = 2)
+    float _sigma = 2.0;
 
     // methods used in bloom filtering
 
@@ -110,6 +121,12 @@ private:
 
     // implements a simple box kernel
     glm::vec3 boxKernel(int x, int y, int filterSize, std::vector<glm::vec3> &image, int width, int height);
+
+    // implements a 2-pass gaussian kernel
+    glm::vec3 gaussianKernel(int x, int y, int filterSize, std::vector<glm::vec3>& image, int width, int height);
+
+    // computes the value of the 2d gaussian function with mean 0 and standard deviation _sigma
+    float gaussianFunction(float x, float y);
 
     // add the values of the 2 images
     // if the operation failed returns false, otherwise true
