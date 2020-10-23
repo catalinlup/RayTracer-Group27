@@ -29,7 +29,7 @@ class Image {
 public:
     Image(const std::filesystem::path& filePath);
 
-    glm::vec3 getPixel(const glm::vec2 &textureCoordinates, float pixelDensity = 1000.0f) const;
+    glm::vec3 getPixel(const glm::vec2 &textureCoordinates, float lod = 1000.0f) const;
 
     // sets the border color of the image
     void setBorderColor(const glm::vec3 color);

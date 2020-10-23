@@ -154,6 +154,7 @@ static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const
 	return glm::vec3(0);
 }
 
+
 glm::vec3 calcColor(Lighting light, Material material) {
 	// difuse light
 	glm::vec3 diffuse = material.kd * light.color * light.intensity * light.cosLightSurfaceAngle;

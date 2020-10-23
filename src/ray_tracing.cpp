@@ -174,6 +174,9 @@ bool intersectRayWithShape(const Sphere& sphere, Ray& ray, HitInfo& hitInfo)
 /// Output: if intersects then modify the hit parameter ray.t and return true, otherwise return false
 bool intersectRayWithShape(const AxisAlignedBox& box, Ray& ray)
 {
+    if (glm::all(glm::equal(box.lower, glm::vec3(std::numeric_limits<float>::max()))) && glm::all(glm::equal(box.upper, glm::vec3(-std::numeric_limits<float>::max())))) {
+        return false;
+    }
     glm::vec3 dir = glm::normalize(ray.direction);
 
     float txmin = (box.lower.x - ray.origin.x) / dir.x;
