@@ -557,7 +557,7 @@ int main(int argc, char** argv)
             // https://learnopengl.com/Advanced-OpenGL/Blending
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            bvh.debugDraw(bvhDebugLevel, bvhShowLeafNodes);
+            bvh.debugDraw(bvhDebugLevel);
             glPopAttrib();
         }
 

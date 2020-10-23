@@ -33,91 +33,102 @@ bool smallerThanOrEqual(float x, float y)
 {
     return greaterThanOrEqual(y, x);
 }
-
-bool pointInTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& n, const glm::vec3& p)
+float getSign(const glm::vec3 &v, const glm::vec3 &n)
 {
-    //Check sings of cross products for each side of the triangle
-    bool s0 = glm::dot(glm::cross((p - v0), (v2 - v0)), n) >= 0;
-    bool s1 = glm::dot(glm::cross((p - v2), (v1 - v2)), n) >= 0;
-    bool s2 = glm::dot(glm::cross((p - v1), (v0 - v1)), n) >= 0;
+    return glm::dot(glm::normalize(v), n);
+}
 
-    //If all positive then point is inside the triangle
-    if (s0 && s1 && s2) {
+bool pointInTriangle(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v2, const glm::vec3 &n, const glm::vec3 &p)
+{
+    glm::vec3 normal = glm::normalize(n);
+
+    float s0 = getSign(glm::cross(p - v0, v2 - v0), normal);
+    float s1 = getSign(glm::cross(p - v2, v1 - v2), normal);
+    float s2 = getSign(glm::cross(p - v1, v0 - v1), normal);
+
+    if (greaterThanOrEqual(s0, 0) && greaterThanOrEqual(s1, 0) && greaterThanOrEqual(s2, 0))
         return true;
-    }
-    //If all negative then point is inside the triangle
-    else if (!s0 && !s1 && !s2) {
+
+    if (smallerThanOrEqual(s0, 0) && smallerThanOrEqual(s1, 0) && smallerThanOrEqual(s2, 0))
         return true;
-    }
-    //Point is outisde the triangle
+
     return false;
 }
 
-bool intersectRayWithPlane(const Plane& plane, Ray& ray)
+bool intersectRayWithPlane(const Plane &plane, Ray &ray)
 {
-    float nDotd = glm::dot(glm::normalize(ray.direction), plane.normal);
-    //Check that ray is not parallel to the plane of the triangle
-    if (nDotd == 0) {
+    glm::vec3 n = glm::normalize(plane.normal);
+    glm::vec3 d = glm::normalize(ray.direction);
+
+    float numer = glm::dot(n, d);
+
+    if (isZero(numer))
         return false;
-    }
-    float t = (plane.D - glm::dot(ray.origin, plane.normal)) / nDotd;
-    if (t >= 0) {
-        //Check if found t is actually closer to the origin than the current t stored in ray.t
-        if (t < ray.t) {
-            ray.t = t;
-            return true;
-        }
-        else {
-            return false;
-        }
-    }
-    else {
+
+    float t = (plane.D - glm::dot(n, ray.origin)) / numer;
+
+    if (t < 0)
         return false;
-    }
+
+    ray.t = glm::min(ray.t, t);
+
+    return true;
 }
 
-Plane trianglePlane(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2)
+Plane trianglePlane(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v2)
 {
     Plane plane;
-    glm::vec3 n = glm::normalize(glm::cross((v0 - v2), (v1 - v2)));
-    float distance = glm::dot(n, v0);
-    plane.D = distance;
-    plane.normal = n;
+
+    glm::vec3 v01 = v1 - v0;
+    glm::vec3 v02 = v2 - v0;
+
+    glm::vec3 normal = glm::normalize(glm::cross(v01, v02));
+    float D = glm::dot(normal, v1);
+
+    plane.normal = normal;
+    plane.D = D;
 
     return plane;
 }
 
 /// Input: the three vertices of the triangle
 /// Output: if intersects then modify the hit parameter ray.t and return true, otherwise return false
-bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, Ray& ray, HitInfo& hitInfo)
+bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, Ray& ray, HitInfo& hitInfo, Material& m)
 {
-    //Store old t
-    float tOld = ray.t;
-    Plane plane = trianglePlane(v0, v1, v2); //get the plane
-    if (intersectRayWithPlane(plane, ray)) { //does ray intersect plane
-        glm::vec3 point = ray.origin + ray.direction * ray.t;
-        if (pointInTriangle(v0, v1, v2, plane.normal, point)) { //does point lie in triangle
+    const float initialT = ray.t;
+
+    Plane plane = trianglePlane(v0, v1, v2);
+    bool planeIntersected = intersectRayWithPlane(plane, ray);
+
+    if (!planeIntersected)
+        return false;
+
+    glm::vec3 pointInPlane = ray.origin + ray.t * ray.direction;
+
+    bool isPInTriangle = pointInTriangle(v0, v1, v2, plane.normal, pointInPlane);
+
+    if (isPInTriangle)
+    {
+        if(ray.t < initialT) {
+            hitInfo.hitPoint = pointInPlane;
             hitInfo.normal = plane.normal;
-            hitInfo.hitPoint = point;
-
-
-            return true; //return found point
+            hitInfo.material = m;
         }
-        else {
-            //Restore old t if no hit
-            ray.t = tOld;
-        }
+        return true;
     }
+
+    //reset the parameter t
+    ray.t = initialT;
+
     return false;
 }
 
 /// Input: the three vertices of the triangle
 /// Output: if intersects then modify the hit parameter ray.t and return true, otherwise return false.
 /// In addition to the method 'intersectRayWithTriangle' it also interpolates the normals and the texture coordinates of the vertices
-bool intersectRayWithTriangleWithInterpolation(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ray& ray, HitInfo& hitInfo) {
-    
+bool intersectRayWithTriangleWithInterpolation(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ray& ray, HitInfo& hitInfo, Material& m) {
     // if the ray intersects the triangle, interpolate the normals and the texture coordinates
-    if(intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo)) {
+    if(intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo, m)) {
 
         glm::vec3 barCoords;
         // should always find barycentric coordinates, since the hitPoint is inside the triangle
@@ -160,10 +171,12 @@ bool intersectRayWithShape(const Sphere& sphere, Ray& ray, HitInfo& hitInfo)
         float t0 = (-B + glm::sqrt(disc)) / (2 * A);
         float t1 = (-B - glm::sqrt(disc)) / (2 * A);
         if (glm::min(t0, t1) > 0) {
-            ray.t = glm::min(t0, t1);
-            hitInfo.hitPoint = ray.origin + ray.t * ray.direction;
-            hitInfo.normal = glm::normalize(hitInfo.hitPoint - sphere.center);
-            hitInfo.material = sphere.material;
+            if(ray.t > glm::min(t0, t1)) {
+                ray.t = glm::min(t0, t1);
+                hitInfo.hitPoint = ray.origin + ray.t * ray.direction;
+                hitInfo.normal = glm::normalize(hitInfo.hitPoint - sphere.center);
+                hitInfo.material = sphere.material;
+            }
             return true;
         }
     }
