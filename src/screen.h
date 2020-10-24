@@ -44,6 +44,9 @@ public:
 
     void draw();
 
+    // postProcesses, i.e. applies gamma correction or bloom effects
+    void postprocessImage();
+
 
     // controls weather or not the bloom filter should be used on the live output or not
     void setBloomFilterLive(bool bloomFilterLive);

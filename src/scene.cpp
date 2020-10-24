@@ -93,6 +93,29 @@ Scene loadScene(SceneType type, const std::filesystem::path &dataDir)
         //scene.sphericalLight.push_back(SphericalLight{ glm::vec3(0, 1.5f, 0), 0.2f, glm::vec3(1) });
     }
     break;
+    case ChessBoard:
+    {
+        auto subMeshes = loadMesh(dataDir / "checker2.obj");
+        subMeshes[0].material.kd = glm::vec3(1.0f);
+        std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
+        scene.pointLights.push_back(PointLight{glm::vec3(-1, 1, -1), glm::vec3(1)});
+
+        // for (float x = -100.0f; x <= 100.0f; x += 1)
+        // {
+        //     for (float y = -100.0f; y <= 100.0f; y += 1)
+        //     {
+        //         scene.pointLights.push_back(PointLight{glm::vec3(x, 1, y), glm::vec3(1)});
+        //     }
+        // }
+
+        //scene.pointLights.push_back(PointLight{glm::vec3(-1, 0.1, -1), glm::vec3(100)});
+    }
+    break;
+    case Wall:
+    {
+        
+    }
+    break;
     };
 
     return scene;

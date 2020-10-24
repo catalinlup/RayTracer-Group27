@@ -23,6 +23,8 @@ enum SceneType
     Dragon,
     //AABBs,
     Spheres,
+    ChessBoard,
+    Wall,
     //Mixed,
     Custom
 };

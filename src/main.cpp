@@ -302,6 +302,9 @@ int pixelCount = 0;
 		}
 	}
 
+	// applies bloom filter or gamma effect
+	screen.postprocessImage();
+
 }
 
 int main(int argc, char** argv)
@@ -381,9 +384,10 @@ int main(int argc, char** argv)
         // === Setup the UI ===
         ImGui::Begin("Final Project - Part 2");
         {
-            constexpr std::array items { "SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Dragon", /* "AABBs",*/ "Spheres", /*"Mixed",*/ "Custom" };
-            if (ImGui::Combo("Scenes", reinterpret_cast<int*>(&sceneType), items.data(), int(items.size()))) {
-                optDebugRay.reset();
+			constexpr std::array items{"SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Teapot", "Dragon", /* "AABBs",*/ "Spheres", "Chess", "Wall", /*"Mixed",*/ "Custom"};
+			if (ImGui::Combo("Scenes", reinterpret_cast<int *>(&sceneType), items.data(), int(items.size())))
+			{
+				optDebugRay.reset();
                 scene = loadScene(sceneType, dataPath);
                 bvh = BoundingVolumeHierarchy(&scene);
                 if (optDebugRay) {
@@ -607,9 +611,9 @@ int main(int argc, char** argv)
 				renderRayTracing(scene, camera, bvh, screen);
 				rayTracing_toBeRendered = false;
 			}
-            screen.setPixel(0, 0, glm::vec3(1.0f));
-            screen.draw(); // Takes the image generated using ray tracing and outputs it to the screen using OpenGL.
-        } break;
+			screen.setPixel(0, 0, glm::vec3(1.0f));
+			screen.draw(); // Takes the image generated using ray tracing and outputs it to the screen using OpenGL.
+		} break;
 		case ViewMode::Textures: {
 			// render in textureDebugging mode
 			if(rayTracing_toBeRendered) {
