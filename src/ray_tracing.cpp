@@ -100,7 +100,7 @@ Plane trianglePlane(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v
 
 /// Input: the three vertices of the triangle
 /// Output: if intersects then modify the hit parameter ray.t and return true, otherwise return false
-bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, Ray& ray, HitInfo& hitInfo, Material& m)
+bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, Ray& ray, HitInfo& hitInfo, int material_index)
 {
     //Store old t
     float tOld = ray.t;
@@ -112,7 +112,7 @@ bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const gl
         { //does point lie in triangle
             hitInfo.normal = plane.normal;
             hitInfo.hitPoint = point;
-            hitInfo.material = m;
+            hitInfo.material_index = material_index;
 
 
             return true; //return found point
@@ -129,12 +129,12 @@ bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const gl
 /// Input: the three vertices of the triangle
 /// Output: if intersects then modify the hit parameter ray.t and return true, otherwise return false.
 /// In addition to the method 'intersectRayWithTriangle' it also interpolates the normals and the texture coordinates of the vertices
-bool intersectRayWithTriangleWithInterpolation(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ray& ray, HitInfo& hitInfo, Material& m) {
+bool intersectRayWithTriangleWithInterpolation(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ray& ray, HitInfo& hitInfo, int material_index) {
     
     float old_t = ray.t;
     
     // if the ray intersects the triangle, interpolate the normals and the texture coordinates
-    if(intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo, m)) {
+    if(intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo, material_index)) {
 
         // if the object was actually hit, update the hitInfo with the corresponding triangle
 
@@ -190,7 +190,7 @@ bool intersectRayWithShape(const Sphere& sphere, Ray& ray, HitInfo& hitInfo)
                 ray.t = glm::min(t0, t1);
                 hitInfo.hitPoint = ray.origin + ray.t * ray.direction;
                 hitInfo.normal = glm::normalize(hitInfo.hitPoint - sphere.center);
-                hitInfo.material = sphere.material;
+                hitInfo.sphere_material = sphere.material;
                 hitInfo.is_triangle = false;
                 hitInfo.intersected_sphere = sphere;
             }

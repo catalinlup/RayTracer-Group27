@@ -87,16 +87,16 @@ bool checkShadow(HitInfo hitInfo, PointLight light, const BoundingVolumeHierarch
 	return true;
 }
 
-glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight light, Ray ray, HitInfo hitInfo, glm::vec3 cameraPos) {
+glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight light, Ray ray, HitInfo hitInfo, glm::vec3 cameraPos, Scene& scene) {
 	glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
 	glm::vec3 resColor(0);
 	//Check if the intersecting surface has a non black Ks value and that we haven't passed the relfected ray count
-	if (glm::all(glm::notEqual(hitInfo.material.ks, glm::vec3(0))) && level > 0) {
+	if (glm::all(glm::notEqual(hitInfo.getMaterial(scene).ks, glm::vec3(0))) && level > 0) {
 		if (checkShadow(hitInfo, light, bvh)) {
 			glm::vec3 reflectedLight = 2 * glm::dot(lightDir, hitInfo.normal) * hitInfo.normal - lightDir;
 			glm::vec3 viewDir = glm::normalize(cameraPos - hitInfo.hitPoint);
 
-			resColor = hitInfo.material.ks * light.color * glm::pow(glm::dot(glm::normalize(reflectedLight), viewDir), hitInfo.material.shininess);
+			resColor = hitInfo.getMaterial(scene).ks * light.color * glm::pow(glm::dot(glm::normalize(reflectedLight), viewDir), hitInfo.getMaterial(scene).shininess);
 
 			//Keep the old hitInfo in case the reflected ray has no further intersections
 			HitInfo old = hitInfo;
@@ -118,7 +118,7 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 				drawRay(reflectedRay, glm::vec3(1));
 				//drawRay(normalRay, glm::vec3(1, 0, 0));
 				level--;
-				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, cameraPos);
+				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, cameraPos, scene);
 			}
 			else {
 				//Restore old hitInfo because there was no hit
@@ -148,7 +148,7 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 
 
 // used for debugging the textures
-static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray) {
+static glm::vec3 getFinalColorNoRayTracingJustTextures(Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray) {
 	HitInfo hitInfo;
 
 
@@ -158,7 +158,7 @@ static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const
 		// does not reflect rays so we only transfer the ray differentials
 		transfer_ray_differentials(ray, hitInfo.normal);
 
-		Material mat = hitInfo.material;
+		const Material& mat = hitInfo.getMaterial(scene);
 		if(mat.kdTexture) {
 			Image texture = mat.kdTexture.value();
 
@@ -195,7 +195,7 @@ static int max_reflection_level = 5;
 static int sphere_light_ray_count = 10;
 static int plane_light_1D_ray_count = 3;
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
-static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int level=0)
+static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int level=0)
 {
 	if (level == max_reflection_level) {
 		return glm::vec3(0);
@@ -215,12 +215,20 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), glm::normalize(hitInfo.normal));
 
 		// if textures to be used and the material has texture, use it
+		// also, avoid copying the texture over and over again
+		// to achieve this, a new material is created, that does not carry over the image, only the color in that particular point
 
-		Material matForRendering = hitInfo.material;
+		Material& originalMaterial = hitInfo.getMaterial(scene);
 
-		if (useTextures && hitInfo.is_triangle && matForRendering.kdTexture)
+		Material matForRendering;
+		matForRendering.kd = originalMaterial.kd;
+		matForRendering.ks = originalMaterial.ks;
+		matForRendering.shininess = originalMaterial.shininess;
+		matForRendering.transparency = originalMaterial.transparency;
+
+		if (useTextures && hitInfo.is_triangle && originalMaterial.kdTexture)
 		{
-			Image texture = matForRendering.kdTexture.value();
+			Image& texture = originalMaterial.kdTexture.value();
 
 			texture.setBorderColor(textureBorderColor);
 			texture.setOutOfBoundsRuleX(outOfBoundsRuleX);
@@ -277,7 +285,7 @@ static void renderOpenGL(const Scene& scene, const Trackball& camera, int select
 
 // This is the main rendering function. You are free to change this function in any way (including the function signature).
 // if texture debugging is set to true, the method will call the getFinalColorNoRayTracingJustTextures, instead of getFinalColor.
-static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen, bool textureDebugging = false)
+static void renderRayTracing(Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen, bool textureDebugging = false)
 {
 ProgressIndicator indicator;
 int pixelCount = 0;

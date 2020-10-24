@@ -6,7 +6,9 @@
 struct HitInfo {
     glm::vec3 normal;
     glm::vec3 hitPoint;
-    Material material;
+    int material_index; // stores the index of the mesh in the scene that contains this material
+
+    Material sphere_material; // spheres don't have textures, so it is fine to store the material
 
     // the interpolated texture coordinate, based on the 3 vertices defining the plane
     glm::vec2 texCoord;
@@ -15,6 +17,22 @@ struct HitInfo {
     bool is_triangle = false; // true if the intersected object is a triangle, false if it is a sphere
     std::array<Vertex, 3> intersected_triangle; // the intersected triangle if the ray intersected a triangle
     Sphere intersected_sphere; // the intersected sphere if the intersected object is a sphere.
+
+    // returns a reference to the material
+    // fast, but the material is lost once the object gets out of scope
+    Material& getMaterial(Scene& scene) {
+        if(is_triangle)
+            return scene.meshes[material_index].material;
+        return sphere_material;
+    }
+
+
+    // the material is not lost, but it is very slow
+    Material getMaterialCopy(Scene& scene) {
+        if(is_triangle)
+            return scene.meshes[material_index].material;
+        return sphere_material;
+    }
 
 };
 
@@ -25,12 +43,12 @@ bool pointInTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& 
 
 Plane trianglePlane(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2);
 
-bool intersectRayWithTriangle(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v2, Ray &ray, HitInfo &hitInfo, Material &m);
+bool intersectRayWithTriangle(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v2, Ray &ray, HitInfo &hitInfo, int material_index);
 
 /// Input: the three vertices of the triangle
 /// Output: if intersects then modify the hit parameter ray.t and return true, otherwise return false.
 /// In addition to the method 'intersectRayWithTriangle' it also interpolates the normals and the texture coordinates of the vertices
-bool intersectRayWithTriangleWithInterpolation(const Vertex &v0, const Vertex &v1, const Vertex &v2, Ray &ray, HitInfo &hitInfo, Material &m);
+bool intersectRayWithTriangleWithInterpolation(const Vertex &v0, const Vertex &v1, const Vertex &v2, Ray &ray, HitInfo &hitInfo, int material_index);
 
 bool intersectRayWithShape(const Sphere& sphere, Ray& ray, HitInfo& hitInfo);
 bool intersectRayWithShape(const AxisAlignedBox& box, Ray& ray);

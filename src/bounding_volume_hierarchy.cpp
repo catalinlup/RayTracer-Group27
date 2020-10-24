@@ -43,16 +43,19 @@ bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool useBVH)
     if(!useBVH) {
         bool hit = false; 
         // Intersect with all triangles of all meshes.
+        int material_index = 0;
         for (const auto& mesh : m_pScene->meshes) {
             for (const auto& tri : mesh.triangles) {
                 const auto v0 = mesh.vertices[tri[0]];
                 const auto v1 = mesh.vertices[tri[1]];
                 const auto v2 = mesh.vertices[tri[2]];
-                Material m = mesh.material;
-                if (intersectRayWithTriangleWithInterpolation(v0, v1, v2, ray, hitInfo, m)) {
+                const Material& m = mesh.material;
+                if (intersectRayWithTriangleWithInterpolation(v0, v1, v2, ray, hitInfo, material_index))
+                {
                     hit = true;
                 }
             }
+            material_index++;
         }
         // Intersect with spheres.
         for (const auto& sphere : m_pScene->spheres)
@@ -68,6 +71,7 @@ bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool useBVH)
 
 void BoundingVolumeHierarchy::loadObjectsFromScene() 
 {
+    int meshIndex = 0;
     for (const auto& mesh : m_pScene->meshes) {
         for (const auto &tri : mesh.triangles)
         {
@@ -76,8 +80,9 @@ void BoundingVolumeHierarchy::loadObjectsFromScene()
             const auto v2 = mesh.vertices[tri[2]];
             std::array<Vertex, 3> triangle {v0, v1, v2};
             triangles.push_back(triangle);
-            triangle_materials.push_back(mesh.material);
+            triangle_materials.push_back(meshIndex);
         }
+        meshIndex++;
     }
     // Intersect with spheres.
     for (const auto& sphere : m_pScene->spheres) {
@@ -390,8 +395,7 @@ bool BoundingVolumeHierarchy::intersectNode(int node_index, Ray &ray) const{
 bool BoundingVolumeHierarchy::intersectObject(int object_index, bool is_triangle, Ray &ray, HitInfo &hitInfo) const {
     if(is_triangle) {
         auto triangle = triangles.at(object_index);
-        auto material = triangle_materials.at(object_index);
-        return intersectRayWithTriangleWithInterpolation(triangle[0], triangle[1], triangle[2], ray, hitInfo, material);
+        return intersectRayWithTriangleWithInterpolation(triangle[0], triangle[1], triangle[2], ray, hitInfo, triangle_materials.at(object_index));
     }
 
     // is sphere

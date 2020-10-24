@@ -133,6 +133,7 @@ float computeLevelOfDetails(const Ray &ray, const HitInfo &hitInfo)
     glm::vec2 deltaTx = deltaX * dT_dx;
     glm::vec2 deltaTy = deltaY * dT_dy;
 
-    // oversampling is considered better than undersamping, so we are choosing the larger differential
-    return glm::log2(glm::max(glm::length(deltaTx), glm::length(deltaTy)));
+    // oversampling is considered  so we are choosing the larger differential
+    // in case of negative results, return 0.
+    return glm::max(0.0f, glm::log2(glm::max(glm::length(deltaTx), glm::length(deltaTy))));
 }

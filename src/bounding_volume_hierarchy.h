@@ -77,5 +77,5 @@ private:
 
     std::vector<Sphere> spheres;
     std::vector<std::array<Vertex, 3>> triangles;
-    std::vector<Material> triangle_materials;
+    std::vector<int> triangle_materials; // stores an index to the mesh that contains the material, large performance boost
 };
