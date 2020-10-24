@@ -24,7 +24,7 @@ enum SceneType
     //AABBs,
     Spheres,
     ChessBoard,
-    Wall,
+    ChessBoard2,
     //Mixed,
     Custom
 };

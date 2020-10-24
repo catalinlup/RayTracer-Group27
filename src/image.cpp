@@ -144,11 +144,11 @@ float Image::clampTextureCoordinate(const float coordinate) const{
 // aplies the repeating procedure on the provided texture coordinate
 float Image::repeatTextureCoordinate(const float coordinate) const{
     if(isOutOfBounds(coordinate)) {
-        float toRet = std::abs(coordinate);
+        float toRet = coordinate;
         float val = toRet - std::floor(toRet);
         // for integers like (2.0f, 3.0f, 4.0f) return 1
-        if(val < 1e-7)
-            return 1.0f;
+        // if(val < 1e-1)
+        //     return 0.0f;
         
         return val;
     }
@@ -303,7 +303,7 @@ glm::vec3 Image::nearestLevelBilinear(glm::vec2 textureCoordinates, float lod) c
 glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, float lod) const
 {
     if (!isMipmapInit())
-        return glm::vec3(1);
+        return glm::vec3(0);
 
     unsigned int best_level_lower;
     unsigned int best_level_higher;
@@ -311,8 +311,9 @@ glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, float lod)
     bool succ1 = getBestLevelMipmap(best_level_higher, lod, 1);
     bool succ2 = getBestLevelMipmap(best_level_lower, lod, 2);
 
-    if(!succ1 && !succ2)
-        return glm::vec3(1);
+    if(!succ1 && !succ2) {
+        return glm::vec3(0);
+    }
 
     // if we don't have to mipmaps to interpolate our values in between, then it's just as nearestLevelBilinear
     if(!succ1) {
@@ -329,12 +330,15 @@ glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, float lod)
    
 
     unsigned int w_low, h_low, w_high, h_high;
-    if (!getWidthHeightForLevel(w_low, h_low, best_level_lower))
-        return glm::vec3(1);
+    if (!getWidthHeightForLevel(w_low, h_low, best_level_lower)) {
+
+        return glm::vec3(0);
+    }
 
 
-    if (!getWidthHeightForLevel(w_high, h_high, best_level_higher))
-        return glm::vec3(1);
+    if (!getWidthHeightForLevel(w_high, h_high, best_level_higher)) {
+        return glm::vec3(0);
+    }
 
     
 
@@ -347,11 +351,18 @@ glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, float lod)
     // linear interpolate between the low and the high result
     glm::vec3 color = linearInterpolation((float) best_level_lower, (float) best_level_higher, color_low, color_high, lod);
 
+    //std::cout << best_level_lower << " " << lod << " " << best_level_higher << std::endl;
+
     return color;
 }
 
 // interpolates linearly between 2 colors
 glm::vec3 Image::linearInterpolation(float low, float high, glm::vec3 color_low, glm::vec3 color_high, float p) const {
+
+    // if the 2 values are equal, return the lowest one.
+    if(glm::abs(high - low) < 1e-6)
+        return color_low;
+
     float c = (p - low) / (high - low);
 
     return (1 - c) * color_low + c * color_high;

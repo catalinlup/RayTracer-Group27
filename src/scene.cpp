@@ -95,10 +95,10 @@ Scene loadScene(SceneType type, const std::filesystem::path &dataDir)
     break;
     case ChessBoard:
     {
-        auto subMeshes = loadMesh(dataDir / "checker2.obj");
+        auto subMeshes = loadMesh(dataDir / "checker3.obj");
         subMeshes[0].material.kd = glm::vec3(1.0f);
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
-        scene.pointLights.push_back(PointLight{glm::vec3(-1, 1, -1), glm::vec3(1)});
+        scene.sphericalLight.push_back(SphericalLight{glm::vec3(-1, 100, -25), 10, glm::vec3(1)});
 
         // for (float x = -100.0f; x <= 100.0f; x += 1)
         // {
@@ -111,9 +111,13 @@ Scene loadScene(SceneType type, const std::filesystem::path &dataDir)
         //scene.pointLights.push_back(PointLight{glm::vec3(-1, 0.1, -1), glm::vec3(100)});
     }
     break;
-    case Wall:
+    case ChessBoard2:
     {
-        
+        auto subMeshes = loadMesh(dataDir / "checker2.obj");
+        subMeshes[0].material.kd = glm::vec3(1.0f);
+        std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
+        scene.sphericalLight.push_back(SphericalLight{glm::vec3(-1, 100, -25), 10, glm::vec3(1)});
+        scene.sphericalLight.push_back(SphericalLight{glm::vec3(8, 4, -8), 0.3, glm::vec3(1.0f, 0.0f, 1.0f)});
     }
     break;
     };

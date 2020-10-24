@@ -392,7 +392,7 @@ int main(int argc, char** argv)
         // === Setup the UI ===
         ImGui::Begin("Final Project - Part 2");
         {
-			constexpr std::array items{"SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Teapot", "Dragon", /* "AABBs",*/ "Spheres", "Chess", "Wall", /*"Mixed",*/ "Custom"};
+			constexpr std::array items{"SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Teapot", "Dragon", /* "AABBs",*/ "Spheres", "Chess", "Chess2", /*"Mixed",*/ "Custom"};
 			if (ImGui::Combo("Scenes", reinterpret_cast<int *>(&sceneType), items.data(), int(items.size())))
 			{
 				optDebugRay.reset();
@@ -472,7 +472,9 @@ int main(int argc, char** argv)
 		if (ImGui::TreeNode("Texture Settings"))
 		{
 
+
 			ImGui::Checkbox("Use Textures", &useTextures);
+
 
 			constexpr std::array filtering_modes{"Nearest Neighbor", "Bilinear", "Nearest Level Mipmapping", "Bilinear Mipmapping", "Trilinear Mipmapping"};
 			ImGui::Combo("Filtering Mode", reinterpret_cast<int *>(&textureFiltering), filtering_modes.data(), int(filtering_modes.size()));
