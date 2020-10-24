@@ -70,6 +70,7 @@ enum class ViewMode {
 };
 
 
+
 bool checkShadow(HitInfo hitInfo, PointLight light, const BoundingVolumeHierarchy& bvh) {
 	Ray testRay;
 	HitInfo old = hitInfo;
@@ -278,6 +279,7 @@ static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh,
 	}
 }
 
+
 static void setOpenGLMatrices(const Trackball& camera);
 static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
 
@@ -349,6 +351,10 @@ int main(int argc, char** argv)
 	float exposure = 0.5;	// 0 to 1
 	float sigma = 2.0f;
 	int kernel_num_repetitions = 1;
+
+
+	// Vertex normal interpolation debugging
+	bool show_vertex_normals = false;
 
 
 
@@ -499,6 +505,9 @@ int main(int argc, char** argv)
                 ImGui::SliderInt("BVH Level", &bvhDebugLevel, 0, bvh.numLevels() - 1);
                 ImGui::Checkbox("Show BVH leaf nodes", &bvhShowLeafNodes);
             }
+
+			ImGui::Checkbox("Show vertex normals", &show_vertex_normals);
+			
             
         } 
 
@@ -613,7 +622,8 @@ int main(int argc, char** argv)
                 (void)getFinalColor(scene, bvh, *optDebugRay);
                 enableDrawRay = false;
             }
-            glPopAttrib();
+
+			glPopAttrib();
         } break;
         case ViewMode::RayTracing: {
 			if(rayTracing_toBeRendered) {
@@ -648,11 +658,14 @@ int main(int argc, char** argv)
             // https://learnopengl.com/Advanced-OpenGL/Blending
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            bvh.debugDraw(bvhDebugLevel);
-            glPopAttrib();
+            bvh.debugDraw(bvhDebugLevel, bvhShowLeafNodes);
+			showVertexNormals(scene, show_vertex_normals);
+
+			glPopAttrib();
         }
 
-        ImGui::End();
+
+		ImGui::End();
         window.swapBuffers();
     }
 

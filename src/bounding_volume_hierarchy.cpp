@@ -11,8 +11,16 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
 // Use this function to visualize your BVH. This can be useful for debugging. Use the functions in
 // draw.h to draw the various shapes. We have extended the AABB draw functions to support wireframe
 // mode, arbitrary colors and transparency.
-void BoundingVolumeHierarchy::debugDraw(int level)
+void BoundingVolumeHierarchy::debugDraw(int level, bool showLeafNodes)
 {
+
+    if(showLeafNodes) {
+        for(const auto& node : nodes) {
+            if(node.isLeaf)
+                drawAABB(node.AABB, DrawMode::Wireframe, glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+        return;
+    }
 
     // Draw the AABB as a transparent green box.
     //AxisAlignedBox aabb{ glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };

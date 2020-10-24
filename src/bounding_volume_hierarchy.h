@@ -24,7 +24,7 @@ public:
     BoundingVolumeHierarchy(Scene* pScene);
 
     // Use this function to visualize your BVH. This can be useful for debugging.
-    void debugDraw(int level);
+    void debugDraw(int level, bool showLeafNodes);
     int numLevels() const;
 
     // Return true if something is hit, returns false otherwise.
