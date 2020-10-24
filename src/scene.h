@@ -1,3 +1,4 @@
+
 #pragma once
 #include "disable_all_warnings.h"
 #include "mesh.h"
@@ -88,3 +89,4 @@ struct Scene {
 
 // Load a prebuilt scene.
 Scene loadScene(SceneType type, const std::filesystem::path &dataDir);
+

@@ -1,3 +1,6 @@
+
+
+#pragma once
 #include <vector>
 #include "scene.h"
 #include "bounding_volume_hierarchy.h"
@@ -32,3 +35,4 @@ struct SoftShadowPlane
 	float cosAngle;
 };
 std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount1D = 3);
+

@@ -1,3 +1,4 @@
+
 #pragma once
 #include "scene.h"
 #include <optional>
@@ -9,6 +10,12 @@ struct HitInfo {
 
     // the interpolated texture coordinate, based on the 3 vertices defining the plane
     glm::vec2 texCoord;
+
+    // the nature of the intersected object is necessary for the ray differentials update
+    bool is_triangle = false; // true if the intersected object is a triangle, false if it is a sphere
+    std::array<Vertex, 3> intersected_triangle; // the intersected triangle if the ray intersected a triangle
+    Sphere intersected_sphere; // the intersected sphere if the intersected object is a sphere.
+
 };
 
 bool intersectRayWithPlane(const Plane& plane, Ray& ray);
@@ -39,3 +46,4 @@ bool barycentricCoordinates(const glm::vec3& v0, const glm::vec3& v1, const glm:
 // properties - an array of size 3 specifying the property at each vertex of the barycentric coordinate system
 template <typename P>
 P interpolateProperty(const glm::vec3& barCoords, const std::array<P, 3>& properties);
+
