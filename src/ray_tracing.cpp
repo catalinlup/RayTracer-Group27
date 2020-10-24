@@ -40,53 +40,60 @@ float getSign(const glm::vec3 &v, const glm::vec3 &n)
 
 bool pointInTriangle(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v2, const glm::vec3 &n, const glm::vec3 &p)
 {
-    glm::vec3 normal = glm::normalize(n);
+    //Check sings of cross products for each side of the triangle
+    bool s0 = glm::dot(glm::cross((p - v0), (v2 - v0)), n) >= 0;
+    bool s1 = glm::dot(glm::cross((p - v2), (v1 - v2)), n) >= 0;
+    bool s2 = glm::dot(glm::cross((p - v1), (v0 - v1)), n) >= 0;
 
-    float s0 = getSign(glm::cross(p - v0, v2 - v0), normal);
-    float s1 = getSign(glm::cross(p - v2, v1 - v2), normal);
-    float s2 = getSign(glm::cross(p - v1, v0 - v1), normal);
-
-    if (greaterThanOrEqual(s0, 0) && greaterThanOrEqual(s1, 0) && greaterThanOrEqual(s2, 0))
+    //If all positive then point is inside the triangle
+    if (s0 && s1 && s2)
+    {
         return true;
-
-    if (smallerThanOrEqual(s0, 0) && smallerThanOrEqual(s1, 0) && smallerThanOrEqual(s2, 0))
+    }
+    //If all negative then point is inside the triangle
+    else if (!s0 && !s1 && !s2)
+    {
         return true;
-
+    }
+    //Point is outisde the triangle
     return false;
 }
 
 bool intersectRayWithPlane(const Plane &plane, Ray &ray)
 {
-    glm::vec3 n = glm::normalize(plane.normal);
-    glm::vec3 d = glm::normalize(ray.direction);
-
-    float numer = glm::dot(n, d);
-
-    if (isZero(numer))
+    float nDotd = glm::dot(glm::normalize(ray.direction), plane.normal);
+    //Check that ray is not parallel to the plane of the triangle
+    if (nDotd == 0)
+    {
         return false;
-
-    float t = (plane.D - glm::dot(n, ray.origin)) / numer;
-
-    if (t < 0)
+    }
+    float t = (plane.D - glm::dot(ray.origin, plane.normal)) / nDotd;
+    if (t >= 0)
+    {
+        //Check if found t is actually closer to the origin than the current t stored in ray.t
+        if (t < ray.t)
+        {
+            ray.t = t;
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+    else
+    {
         return false;
-
-    ray.t = glm::min(ray.t, t);
-
-    return true;
+    }
 }
 
 Plane trianglePlane(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v2)
 {
     Plane plane;
-
-    glm::vec3 v01 = v1 - v0;
-    glm::vec3 v02 = v2 - v0;
-
-    glm::vec3 normal = glm::normalize(glm::cross(v01, v02));
-    float D = glm::dot(normal, v1);
-
-    plane.normal = normal;
-    plane.D = D;
+    glm::vec3 n = glm::normalize(glm::cross((v0 - v2), (v1 - v2)));
+    float distance = glm::dot(n, v0);
+    plane.D = distance;
+    plane.normal = n;
 
     return plane;
 }
@@ -95,31 +102,26 @@ Plane trianglePlane(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v
 /// Output: if intersects then modify the hit parameter ray.t and return true, otherwise return false
 bool intersectRayWithTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, Ray& ray, HitInfo& hitInfo, Material& m)
 {
-    const float initialT = ray.t;
-
-    Plane plane = trianglePlane(v0, v1, v2);
-    bool planeIntersected = intersectRayWithPlane(plane, ray);
-
-    if (!planeIntersected)
-        return false;
-
-    glm::vec3 pointInPlane = ray.origin + ray.t * ray.direction;
-
-    bool isPInTriangle = pointInTriangle(v0, v1, v2, plane.normal, pointInPlane);
-
-    if (isPInTriangle)
-    {
-        if(ray.t < initialT) {
-            hitInfo.hitPoint = pointInPlane;
+    //Store old t
+    float tOld = ray.t;
+    Plane plane = trianglePlane(v0, v1, v2); //get the plane
+    if (intersectRayWithPlane(plane, ray))
+    { //does ray intersect plane
+        glm::vec3 point = ray.origin + ray.direction * ray.t;
+        if (pointInTriangle(v0, v1, v2, plane.normal, point))
+        { //does point lie in triangle
             hitInfo.normal = plane.normal;
+            hitInfo.hitPoint = point;
             hitInfo.material = m;
+
+            return true; //return found point
         }
-        return true;
+        else
+        {
+            //Restore old t if no hit
+            ray.t = tOld;
+        }
     }
-
-    //reset the parameter t
-    ray.t = initialT;
-
     return false;
 }
 

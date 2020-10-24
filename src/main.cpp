@@ -38,6 +38,8 @@ OutOfBoundsRule outOfBoundsRuleX{OutOfBoundsRule::Border}; // Border, Clamp, Rep
 OutOfBoundsRule outOfBoundsRuleY{OutOfBoundsRule::Border};
 glm::vec3 textureBorderColor(0);
 
+bool useBVH = false;
+
 
 enum class ViewMode {
 	Rasterization = 0,
@@ -52,7 +54,7 @@ bool checkShadow(HitInfo hitInfo, PointLight light, const BoundingVolumeHierarch
 	testRay.origin = old.hitPoint;
 	glm::vec3 direction = light.position - old.hitPoint;
 	testRay.direction = glm::normalize(direction);
-	if (bvh.intersect(testRay, hitInfo)) {
+	if (bvh.intersect(testRay, hitInfo, useBVH)) {
 		glm::vec3 t = (hitInfo.hitPoint - testRay.origin) / direction;
 		if (glm::all(glm::greaterThan(t, glm::vec3(0))) && glm::all(glm::lessThan(t, glm::vec3(1)))) {
 			drawRay(testRay, glm::vec3(1, 0, 0));
@@ -89,7 +91,7 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 			lightRay.origin = old.hitPoint;
 			lightRay.direction = lightDir;
 
-			if (bvh.intersect(reflectedRay, hitInfo)) {
+			if (bvh.intersect(reflectedRay, hitInfo, useBVH)) {
 				//std::cout << "Refl Hit" << std::endl;
 				drawRay(reflectedRay, glm::vec3(1));
 				//drawRay(normalRay, glm::vec3(1, 0, 0));
@@ -129,7 +131,7 @@ static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const
 
 
 
-	if(bvh.intersect(ray, hitInfo)) {
+	if(bvh.intersect(ray, hitInfo, useBVH)) {
 		Material mat = hitInfo.material;
 		if(mat.kdTexture) {
 			Image texture = mat.kdTexture.value();
@@ -176,7 +178,7 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 
 	/*For every light calulate the addition from the reflected rays,
 	then add all of them*/
-	if (bvh.intersect(ray, hitInfo)) {
+	if (bvh.intersect(ray, hitInfo, useBVH)) {
 		drawRay(ray, glm::vec3(1));
 		glm::vec3 color(0);
 		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), glm::normalize(hitInfo.normal));
@@ -322,7 +324,7 @@ int main(int argc, char** argv)
                 bvh = BoundingVolumeHierarchy(&scene);
                 if (optDebugRay) {
                     HitInfo dummy {};
-                    bvh.intersect(*optDebugRay, dummy);
+                    bvh.intersect(*optDebugRay, dummy, useBVH);
                 }
 			}
 		}
@@ -330,6 +332,9 @@ int main(int argc, char** argv)
             constexpr std::array items { "Rasterization", "Ray Traced", "Textures" };
             ImGui::Combo("View mode", reinterpret_cast<int*>(&viewMode), items.data(), int(items.size()));
         }
+
+		ImGui::Checkbox("Use BVH", &useBVH);
+
         if (ImGui::Button("Render to file")) {
             {
                 using clock = std::chrono::high_resolution_clock;

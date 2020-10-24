@@ -17,7 +17,7 @@ bool cansee(const glm::vec3& p1, const glm::vec3& p2, const Scene& scene, const 
 	Ray ray = { o, d };
 
 	HitInfo hitInfo;
-	bool hit = bvh.intersect(ray, hitInfo);
+	bool hit = bvh.intersect(ray, hitInfo, false);
 
 	if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
 		drawRay(ray, glm::vec3(0.5f, 1.0f, 0.5f));
@@ -48,7 +48,7 @@ bool isInHardShadow(const glm::vec3 point, const Scene& scene, const BoundingVol
 
 		// see if it hit somthing
 		HitInfo hitInfo;
-		bool hit = bvh.intersect(ray, hitInfo);
+		bool hit = bvh.intersect(ray, hitInfo, false);
 
 		// the ray hit nothing or the hit was only after the light
 		if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
@@ -112,7 +112,7 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 
 		// see if the ray to the center hit somthing
 		HitInfo hitInfo;
-		bool hit = bvh.intersect(ray, hitInfo);
+		bool hit = bvh.intersect(ray, hitInfo, false);
 
 		// the ray hit nothing or the hit was only after the light
 		if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
@@ -140,7 +140,7 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 		// loop over all the rays that go the the edge of the circle
 		for (int i = 0; i < rayCount - 1; i++) {
 			Ray edgeRay = { o,d + perp };
-			bool hit = bvh.intersect(edgeRay, hitInfo);
+			bool hit = bvh.intersect(edgeRay, hitInfo, false);
 			if (!hit || (edgeRay.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
 				hits++;
 			}
