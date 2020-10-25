@@ -153,7 +153,10 @@ glm::vec3 calcColor(Lighting light, Material material) {
 	// difuse light
 	glm::vec3 diffuse = material.kd * light.color * light.intensity * light.cosLightSurfaceAngle;
 	//specular light
-	glm::vec3 spec = light.color * material.ks * std::pow(light.cosLightSpecAngle, material.shininess);
+	glm::vec3 spec = {0, 0, 0};
+	if (material.shininess > 0) {
+		spec = light.color * material.ks * std::pow(light.cosLightSpecAngle, material.shininess);
+	}
 	return diffuse + spec;
 }
 
