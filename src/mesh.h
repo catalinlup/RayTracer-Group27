@@ -27,6 +27,7 @@ struct Material
     float transparency{1.0f};
 
     std::optional<Image> kdTexture;
+
 };
 
 using Triangle = glm::uvec3;

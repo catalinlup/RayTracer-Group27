@@ -10,6 +10,9 @@ DISABLE_WARNINGS_POP()
 #include <string>
 #include <cmath>
 
+// forward declaration of used functions from ray_tracer.cpp
+
+
 // sets the border color of the image
 void Image::setBorderColor(const glm::vec3 color) {
     _borderColor = color;
@@ -67,14 +70,16 @@ Image::Image(const std::filesystem::path& filePath)
         initMipmap();
 
     //used for debugging
-    //printMipmap();
+    const std::string name = filePath.filename();
+    //printMipmap(name);
 }
 
-glm::vec3 Image::getPixel(const glm::vec2& textureCoordinates, float pixelDensity) const
+glm::vec3 Image::getPixel(glm::vec2 textureCoordinates, float lod) const
 {
     // deal with the out of bounds cases
 
     //std::cout << pixelDensity << std::endl;
+
 
     // in case of the border mode:
     if((_outOfBoundRuleX == OutOfBoundsRule::Border) && isOutOfBounds(textureCoordinates.x))
@@ -96,11 +101,11 @@ glm::vec3 Image::getPixel(const glm::vec2& textureCoordinates, float pixelDensit
     else if(_filteringMethod == TextureFiltering::Bilinear)
         return bilinearInterpolation(imageCoordinates, 0, m_width, m_height);
     else if(_filteringMethod == TextureFiltering::MipMappingNearestLevelNearestNeighbor)
-        return nearestLevelMipmapping(inBoundsTextureCoordinates, pixelDensity);
+        return nearestLevelMipmapping(inBoundsTextureCoordinates, lod);
     else if(_filteringMethod == TextureFiltering::MipMappingNearestLevelBilinear)
-        return nearestLevelBilinear(inBoundsTextureCoordinates, pixelDensity);
+        return nearestLevelBilinear(inBoundsTextureCoordinates, lod);
     else if(_filteringMethod == TextureFiltering::Trilinear)
-        return trilinearInterpolation(inBoundsTextureCoordinates, pixelDensity);
+        return trilinearInterpolation(inBoundsTextureCoordinates, lod);
 
     return glm::vec3(1);
     
@@ -140,11 +145,11 @@ float Image::clampTextureCoordinate(const float coordinate) const{
 // aplies the repeating procedure on the provided texture coordinate
 float Image::repeatTextureCoordinate(const float coordinate) const{
     if(isOutOfBounds(coordinate)) {
-        float toRet = std::abs(coordinate);
+        float toRet = coordinate;
         float val = toRet - std::floor(toRet);
         // for integers like (2.0f, 3.0f, 4.0f) return 1
-        if(val < 1e-7)
-            return 1.0f;
+        // if(val < 1e-1)
+        //     return 0.0f;
         
         return val;
     }
@@ -248,13 +253,13 @@ glm::vec3 Image::bilinearInterpolation(glm::vec2 imageCoordinates, int level, un
 
 // makes use of nearest level mipmapping to get the color based on the image coordinates.
 // in case of an error, such as the mipmap not being initialized, returns a white pixel
-glm::vec3 Image::nearestLevelMipmapping(glm::vec2 textureCoordinates, float pixelDensity) const {
+glm::vec3 Image::nearestLevelMipmapping(glm::vec2 textureCoordinates, float lod) const {
     if(!isMipmapInit())
         return glm::vec3(1);
 
 
     unsigned int best_level;
-    bool succ = getBestLevelMipmap(best_level, pixelDensity, 0);
+    bool succ = getBestLevelMipmap(best_level, lod, 0);
 
     // returns the image coordinates for this level
     glm::vec2 imageCoordinates = toImageCoordinates(textureCoordinates, best_level);
@@ -272,13 +277,13 @@ glm::vec3 Image::nearestLevelMipmapping(glm::vec2 textureCoordinates, float pixe
 }
 
 // same as nearestLevelMipmapping but with bilinear interpolation instead
-glm::vec3 Image::nearestLevelBilinear(glm::vec2 textureCoordinates, float pixelDensity) const
+glm::vec3 Image::nearestLevelBilinear(glm::vec2 textureCoordinates, float lod) const
 {
     if (!isMipmapInit())
         return glm::vec3(1);
 
     unsigned int best_level;
-    bool succ = getBestLevelMipmap(best_level, pixelDensity, 0);
+    bool succ = getBestLevelMipmap(best_level, lod, 0);
 
     // returns the image coordinates for this level
     glm::vec2 imageCoordinates = toImageCoordinates(textureCoordinates, best_level);
@@ -296,44 +301,47 @@ glm::vec3 Image::nearestLevelBilinear(glm::vec2 textureCoordinates, float pixelD
 }
 
 // performs mipmapping with trilinear interpolation
-glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, float pixelDensity) const
+glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, float lod) const
 {
     if (!isMipmapInit())
-        return glm::vec3(1);
+        return glm::vec3(0);
 
     unsigned int best_level_lower;
     unsigned int best_level_higher;
 
-    bool succ1 = getBestLevelMipmap(best_level_higher, pixelDensity, 1);
-    bool succ2 = getBestLevelMipmap(best_level_lower, pixelDensity, 2);
+    bool succ1 = getBestLevelMipmap(best_level_higher, lod, 1);
+    bool succ2 = getBestLevelMipmap(best_level_lower, lod, 2);
 
-    if(!succ1 && !succ2)
-        return glm::vec3(1);
+    if(!succ1 && !succ2) {
+        return glm::vec3(0);
+    }
 
     // if we don't have to mipmaps to interpolate our values in between, then it's just as nearestLevelBilinear
     if(!succ1) {
         glm::vec2 imageCoordinates = toImageCoordinates(textureCoordinates, best_level_higher);
-        return nearestLevelBilinear(imageCoordinates, pixelDensity);
+        return nearestLevelBilinear(imageCoordinates, lod);
     }
 
     if (!succ2)
     {
         glm::vec2 imageCoordinates = toImageCoordinates(textureCoordinates, best_level_lower);
-        return nearestLevelBilinear(imageCoordinates, pixelDensity);
+        return nearestLevelBilinear(imageCoordinates, lod);
     }
 
    
 
     unsigned int w_low, h_low, w_high, h_high;
-    if (!getWidthHeightForLevel(w_low, h_low, best_level_lower))
-        return glm::vec3(1);
+    if (!getWidthHeightForLevel(w_low, h_low, best_level_lower)) {
+
+        return glm::vec3(0);
+    }
 
 
-    if (!getWidthHeightForLevel(w_high, h_high, best_level_higher))
-        return glm::vec3(1);
+    if (!getWidthHeightForLevel(w_high, h_high, best_level_higher)) {
+        return glm::vec3(0);
+    }
 
-    float ratio_low = computePixelRatio(best_level_lower, pixelDensity);
-    float ratio_high = computePixelRatio(best_level_higher, pixelDensity);
+    
 
     glm::vec2 imageCoordinates_lower = toImageCoordinates(textureCoordinates, best_level_lower);
     glm::vec2 imageCoordinates_higher = toImageCoordinates(textureCoordinates, best_level_higher);
@@ -342,13 +350,20 @@ glm::vec3 Image::trilinearInterpolation(glm::vec2 textureCoordinates, float pixe
     glm::vec3 color_high = bilinearInterpolation(imageCoordinates_higher, best_level_higher, w_high, h_high);
 
     // linear interpolate between the low and the high result
-    glm::vec3 color = linearInterpolation(ratio_low, ratio_high, color_low, color_high, 1.0f);
+    glm::vec3 color = linearInterpolation((float) best_level_lower, (float) best_level_higher, color_low, color_high, lod);
+
+    //std::cout << best_level_lower << " " << lod << " " << best_level_higher << std::endl;
 
     return color;
 }
 
 // interpolates linearly between 2 colors
 glm::vec3 Image::linearInterpolation(float low, float high, glm::vec3 color_low, glm::vec3 color_high, float p) const {
+
+    // if the 2 values are equal, return the lowest one.
+    if(glm::abs(high - low) < 1e-6)
+        return color_low;
+
     float c = (p - low) / (high - low);
 
     return (1 - c) * color_low + c * color_high;
@@ -470,65 +485,58 @@ bool Image::getWidthHeightForLevel(unsigned int &width, unsigned int &height, un
     return true;
 }
 
-// compute the ratio between the number of screen pixels and the number of texture pixels for the provided mipmap level
-// returns a negative value in the case of an invalid level or uninitialized mipmap, or if the operation is unsuccesful for some other reasons.
-float Image::computePixelRatio(unsigned int level, float pixelDensity) const {
-    if(!isMipmapInit())
-        return -1.0f;
-
-    if(!levelIsValid(level))
-        return -1.0f;
-
-    unsigned int w, h;
-    bool succ = getWidthHeightForLevel(w, h, level);
-
-    if(!succ)
-        return -1.0f;
-
-    if(w * h == 0)
-        return -1.0f;
-
-    return (pixelDensity) / (float)(w * h);
-}
 
 
-
+// mode - 0, returns the level with the best resolution globally
+// mode - 1, returns the level with the  best higher resolution
+// mode - 2, returns the level with the best lower resolution
+// if the operation is not succesful returns false.
 // returns the best mipmap level with a higher resolution than the screen resolution.
-bool Image::getBestLevelMipmap(unsigned int &best_level, float pixelDensity, unsigned int mode = 0) const {
+bool Image::getBestLevelMipmap(unsigned int &best_level, float lod, unsigned int mode = 0) const {
     if(!isMipmapInit()) {
         std::cerr << "Warning! Mipmap not initialized!" << std::endl;
         return false;
     }
     
-    std::vector<std::pair<float, unsigned int>> distance_from_1;
-
-    for(int level = 0; level < getNumMipmapLevels(); level++) {
-        float ratio = computePixelRatio(level, pixelDensity);
-        if(mode == 0 || (mode == 1 && ratio >= 1) || (mode == 2 && ratio <= 1)) {
-            float dist = std::abs(1 - ratio);
-            distance_from_1.push_back(std::make_pair(dist, level));
+    // best level globally
+    if (mode == 0) {
+        // if lod is closer to the floor than to the ceil, return the floor, else return the ceil
+        if(lod - floor(lod) < ceil(lod) - lod) {
+            best_level = (int) glm::max(0.0, floor(lod));
         }
+        else {
+            best_level = (int) glm::min(getNumMipmapLevels() - 1.0, ceil(lod));
+        }
+
+        return true;
+
     }
+    // best high resolution
+    else if (mode == 1) {
+        best_level = (int)glm::min(getNumMipmapLevels() - 1.0, ceil(lod));
 
-    if(distance_from_1.size() == 0)
-        return false;
+        return true;
+    }
+    // best low resolution
+    else if (mode == 2){
+        best_level = (int)glm::max(0.0, floor(lod));
 
-    std::sort(distance_from_1.begin(), distance_from_1.end());
+        return true;
+    }
+    
+    return false;
 
-    best_level = distance_from_1[0].second;
-
-    return true;
 }
 
 
 // used only for debugging purposes
-void Image::printMipmap() {
+void Image::printMipmap(const std::string name) {
 
-    
+    std::cout << name << std::endl;
 
     for(int level = 0; level < getNumMipmapLevels(); level++) {
        switchToLevel(level);
-        std::string filename = "level_";
+        std::string filename = name  + "_level_";
         filename.push_back((char)(level + '0'));
         filename += ".bmp";
 

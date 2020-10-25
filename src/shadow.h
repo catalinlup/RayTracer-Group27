@@ -1,3 +1,6 @@
+
+
+#pragma once
 #include <vector>
 #include "scene.h"
 #include "bounding_volume_hierarchy.h"
@@ -17,15 +20,15 @@ struct Lighting {
 };
 
 
-std::vector<Lighting> getPointLights(const HitInfo& point, const glm::vec3 reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh);
+std::vector<Lighting> getPointLights(const HitInfo& point, const glm::vec3 reflectdir, Scene& scene, const BoundingVolumeHierarchy& bvh);
 
 struct SoftShadowSphere {
 	SphericalLight light;
 	float intensity;
 };
-std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& reflect, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount = 7);
+std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& reflect, Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount = 7);
 
-std::vector<Lighting> getSpotLichts(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh);
+std::vector<Lighting> getSpotLichts(const HitInfo& point, const glm::vec3& reflectdir, Scene& scene, const BoundingVolumeHierarchy& bvh);
 
 struct SoftShadowPlane
 {
@@ -33,4 +36,5 @@ struct SoftShadowPlane
 	float intensity;
 	float cosAngle;
 };
-std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount1D = 3);
+std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& reflectdir, Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount1D = 3);
+

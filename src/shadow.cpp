@@ -17,7 +17,7 @@ bool cansee(const glm::vec3& p1, const glm::vec3& p2, const Scene& scene, const 
 	Ray ray = { o, d };
 
 	HitInfo hitInfo;
-	bool hit = bvh.intersect(ray, hitInfo);
+	bool hit = bvh.intersect(ray, hitInfo, false);
 
 	if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
 		drawRay(ray, glm::vec3(0.5f, 1.0f, 0.5f));
@@ -29,7 +29,7 @@ bool cansee(const glm::vec3& p1, const glm::vec3& p2, const Scene& scene, const 
 	}
 }
 
-bool cansee(const glm::vec3& p1, const glm::vec3& p2, float& intensity, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
+bool cansee(const glm::vec3& p1, const glm::vec3& p2, float& intensity, Scene& scene, const BoundingVolumeHierarchy& bvh) {
 	glm::vec3 o = p1;
 	glm::vec3 d = p2 - p1;
 	float distance = glm::length(d);
@@ -39,12 +39,13 @@ bool cansee(const glm::vec3& p1, const glm::vec3& p2, float& intensity, const Sc
 	HitInfo hitInfo;
 
 	while (distance > SHADOW_ERROR_OFFSET) {
-		bool hit = bvh.intersect(ray, hitInfo);
+		bool hit = bvh.intersect(ray, hitInfo, true);
+		Material& matForRendering = hitInfo.getMaterial(scene);
 		if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
 			drawRay(ray, glm::vec3(0.5f, 1.0f, 0.5f));
 			return true;
 		}
-		else if (hitInfo.material.transparency!=1.0f) {
+		else if (matForRendering.transparency!=1.0f) {
 			drawRay(ray, glm::vec3(0.3f, 0.3f, 8.0f));
 			distance -= ray.t;
 			ray.t = std::numeric_limits<float>::max();
@@ -52,7 +53,7 @@ bool cansee(const glm::vec3& p1, const glm::vec3& p2, float& intensity, const Sc
 
 			float c = std::abs(glm::dot(ray.direction, hitInfo.normal));
 			// calculate how how much light should reflect and how much should refract
-			float& R0 = hitInfo.material.transparency;//R0static; // probebility of reflection at 0 rad/deg to normal
+			float& R0 = matForRendering.transparency;//R0static; // probebility of reflection at 0 rad/deg to normal
 				// simplified fersnel equasion : refraction
 			intensity *= 1 - (R0 + (1 - R0) * (std::pow(1 - c, 5)));
 
@@ -85,7 +86,7 @@ bool isInHardShadow(const glm::vec3 point, const Scene& scene, const BoundingVol
 
 		// see if it hit somthing
 		HitInfo hitInfo;
-		bool hit = bvh.intersect(ray, hitInfo);
+		bool hit = bvh.intersect(ray, hitInfo, false);
 
 		// the ray hit nothing or the hit was only after the light
 		if (!hit || (ray.t > distance - 2 * SHADOW_ERROR_OFFSET)) {
@@ -102,7 +103,7 @@ bool isInHardShadow(const glm::vec3 point, const Scene& scene, const BoundingVol
 }
 
 // Returns a list of PointLights that illuminate the given point.
-std::vector<Lighting> getPointLights(const HitInfo& point, const glm::vec3 reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
+std::vector<Lighting> getPointLights(const HitInfo& point, const glm::vec3 reflectdir, Scene& scene, const BoundingVolumeHierarchy& bvh) {
 
 	std::vector<Lighting> visibleLights;
 
@@ -130,7 +131,7 @@ glm::mat3 rotatetionMatrix(const float angle, const glm::vec3 axis) {
 	return glm::mat3(1) + C * std::sin(angle) + C * C * (1 - std::cos(angle));
 }
 // returns a list of visable light scoures and how mutch of that lightscource is visable
-std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount) {
+std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& reflectdir, Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount) {
 	std::vector<Lighting> lights;
 	for (const SphericalLight& light : scene.sphericalLight) {
 
@@ -220,7 +221,7 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 }
 
 // returns a list of all spotlights that iluminate a point
-std::vector<Lighting> getSpotLichts(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh) {
+std::vector<Lighting> getSpotLichts(const HitInfo& point, const glm::vec3& reflectdir, Scene& scene, const BoundingVolumeHierarchy& bvh) {
 	std::vector<Lighting> lights;
 
 	for (const SpotLight& light : scene.spotLight) {
@@ -246,7 +247,7 @@ std::vector<Lighting> getSpotLichts(const HitInfo& point, const glm::vec3& refle
 }
 
 
-std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& reflectdir, const Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount1D) {
+std::vector<Lighting> getPlaneLights(const HitInfo& point, const glm::vec3& reflectdir, Scene& scene, const BoundingVolumeHierarchy& bvh, int rayCount1D) {
 	std::vector<Lighting> lights;
 
 	for (const PlaneLight& light : scene.planeLight) {

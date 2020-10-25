@@ -1,14 +1,21 @@
+
+
 #pragma once
 #include "disable_all_warnings.h"
+#include "ray.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/common.hpp>
 #include <glm/vec4.hpp>
+#include <glm/geometric.hpp>
 DISABLE_WARNINGS_POP()
 #include <filesystem>
 #include <vector>
 #include <algorithm>
+#include <cmath>
+
+
 
 enum class OutOfBoundsRule {
     Border,
@@ -29,7 +36,7 @@ class Image {
 public:
     Image(const std::filesystem::path& filePath);
 
-    glm::vec3 getPixel(const glm::vec2 &textureCoordinates, float lod = 1000.0f) const;
+    glm::vec3 getPixel(glm::vec2 textureCoordinates, float lod) const;
 
     // sets the border color of the image
     void setBorderColor(const glm::vec3 color);
@@ -92,12 +99,12 @@ private:
     glm::vec3 bilinearInterpolation(glm::vec2 imageCoordinates, int level, unsigned int width, unsigned int height) const;
 
     // basically nearest neighbot with mipmapping
-    glm::vec3 nearestLevelMipmapping(glm::vec2 imageCoordinates, float pixelDensity) const;
+    glm::vec3 nearestLevelMipmapping(glm::vec2 imageCoordinates, float lod) const;
 
     // same as nearestLevelMipmapping but with bilinear interpolation instead
-    glm::vec3 nearestLevelBilinear(glm::vec2 imageCoordinates, float pixelDensity) const;
+    glm::vec3 nearestLevelBilinear(glm::vec2 imageCoordinates, float lod) const;
 
-    glm::vec3 trilinearInterpolation(glm::vec2 imageCoordinates, float piexelDensity) const;
+    glm::vec3 trilinearInterpolation(glm::vec2 imageCoordinates, float lod) const;
 
     // linearly intepolates between 2 colors
     // low - the lower position
@@ -156,19 +163,17 @@ private:
     // switches to another mipmap level. Returns false and does not do anything if it was unsuccesful, i.e. if the mipmap was not initialized or the level is invalid
     bool switchToLevel(unsigned int level);
 
-    // compute the ratio between the density of the screen pixels and the density of the texture (the number of pixels inside the texture)
-    // returns a negative value in the case of an invalid level or uninitialized mipmap, or if the operation is unsuccesful for some other reasons.
-    float computePixelRatio(unsigned int level, float pixelDensity) const;
 
     // mode - 0, returns the level with the best resolution globally
     // mode - 1, returns the level with the  best higher resolution
     // mode - 2, returns the level with the best lower resolution
-    // if the operation is not succesful returns fals.
-    bool getBestLevelMipmap(unsigned int &best_level, float pixelDensity, unsigned int mode) const;
+    // if the operation is not succesful returns false.
+    bool getBestLevelMipmap(unsigned int &best_level, float lod, unsigned int mode) const;
 
    
 
     
 
-    void printMipmap();
+    void printMipmap(const std::string name);
 };
+

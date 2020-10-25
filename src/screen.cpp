@@ -50,11 +50,25 @@ void Screen::writeBitmapToFile(const std::filesystem::path& filePath)
     stbi_write_bmp(filePathString.c_str(), m_resolution.x, m_resolution.y, 4, textureData8Bits.data());
 }
 
-void Screen::draw()
-{
-    if(_bloomFilterLive) {
+// postProcesses, i.e. applies gamma correction or bloom effects
+void Screen::postprocessImage() {
+    if (_bloomFilterLive)
+    {
         applyBloomEffect();
     }
+
+    // use gamma correction if enabled
+    // if gamma correction is set, apply gamma correction
+    if (_gammaCorrection)
+    {
+        for (int i = 0; i < m_textureData.size(); i++)
+            m_textureData[i] = gammaCorrection(m_textureData[i]);
+    }
+}
+
+void Screen::draw()
+{
+    
 
     drawImage(m_textureData);
 
@@ -107,6 +121,9 @@ void Screen::drawImage(std::vector<glm::vec3> &image) {
         std::cerr << "Could not draw image! The provided image does not match the screen resolution!" << std::endl;
         return;
     }
+
+   
+
 
     glPushAttrib(GL_ALL_ATTRIB_BITS);
 
@@ -246,9 +263,7 @@ void Screen::applyBloomEffect() {
         else if(_filtering_option == FilteringOption::BloomWithExposureHdr)
             m_textureData[i] = exposureToneMap(m_textureData[i]);
 
-        // if gamma correction is set, apply gamma correction
-        if(_gammaCorrection)
-            m_textureData[i] = gammaCorrection(m_textureData[i]);
+  
     }
 }
 

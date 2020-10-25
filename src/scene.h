@@ -1,3 +1,4 @@
+
 #pragma once
 #include "disable_all_warnings.h"
 #include "mesh.h"
@@ -22,6 +23,8 @@ enum SceneType
     Dragon,
     //AABBs,
     Spheres,
+    ChessBoard,
+    ChessBoard2,
     //Mixed,
     Custom
 };
@@ -88,3 +91,4 @@ struct Scene {
 
 // Load a prebuilt scene.
 Scene loadScene(SceneType type, const std::filesystem::path &dataDir);
+

@@ -3,6 +3,7 @@
 #include "draw.h"
 #include "image.h"
 #include "ray_tracing.h"
+#include "ray_differentials.h"
 #include "screen.h"
 #include "trackball.h"
 #include "window.h"
@@ -32,11 +33,34 @@ constexpr glm::ivec2 windowResolution{ 800, 800 };
 const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
+
+struct ProgressIndicator {
+	int currentProgress = 0;
+
+	void setProgress(int numPixels) {
+		float percent = (float) numPixels / (float) (windowResolution.x * windowResolution.y);
+		int progress = (int)floor(percent * 10);
+		progress *= 10;
+
+		if(progress > currentProgress) {
+			currentProgress = progress;
+			std::cout << "Ray Tracing Progress: " << currentProgress <<"%\n";
+		}
+	}
+};
+
 // Textures settings - used for debugging only!
 TextureFiltering textureFiltering{TextureFiltering::NearestNeighbor};
 OutOfBoundsRule outOfBoundsRuleX{OutOfBoundsRule::Border}; // Border, Clamp, Repeat
 OutOfBoundsRule outOfBoundsRuleY{OutOfBoundsRule::Border};
 glm::vec3 textureBorderColor(0);
+bool useTextures = false;
+
+bool useBVH = false;
+
+// the variable controls weather or not another image should be rendered in raytracing mode.
+// used to put an obtained image on halt
+bool rayTracing_toBeRendered = true;
 
 
 enum class ViewMode {
@@ -46,13 +70,14 @@ enum class ViewMode {
 };
 
 
+
 bool checkShadow(HitInfo hitInfo, PointLight light, const BoundingVolumeHierarchy& bvh) {
 	Ray testRay;
 	HitInfo old = hitInfo;
 	testRay.origin = old.hitPoint;
 	glm::vec3 direction = light.position - old.hitPoint;
 	testRay.direction = glm::normalize(direction);
-	if (bvh.intersect(testRay, hitInfo)) {
+	if (bvh.intersect(testRay, hitInfo, useBVH)) {
 		glm::vec3 t = (hitInfo.hitPoint - testRay.origin) / direction;
 		if (glm::all(glm::greaterThan(t, glm::vec3(0))) && glm::all(glm::lessThan(t, glm::vec3(1)))) {
 			drawRay(testRay, glm::vec3(1, 0, 0));
@@ -63,16 +88,16 @@ bool checkShadow(HitInfo hitInfo, PointLight light, const BoundingVolumeHierarch
 	return true;
 }
 
-glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight light, Ray ray, HitInfo hitInfo, glm::vec3 cameraPos) {
+glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight light, Ray ray, HitInfo hitInfo, glm::vec3 cameraPos, Scene& scene) {
 	glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
 	glm::vec3 resColor(0);
 	//Check if the intersecting surface has a non black Ks value and that we haven't passed the relfected ray count
-	if (glm::all(glm::notEqual(hitInfo.material.ks, glm::vec3(0))) && level > 0) {
+	if (glm::all(glm::notEqual(hitInfo.getMaterial(scene).ks, glm::vec3(0))) && level > 0) {
 		if (checkShadow(hitInfo, light, bvh)) {
 			glm::vec3 reflectedLight = 2 * glm::dot(lightDir, hitInfo.normal) * hitInfo.normal - lightDir;
 			glm::vec3 viewDir = glm::normalize(cameraPos - hitInfo.hitPoint);
 
-			resColor = hitInfo.material.ks * light.color * glm::pow(glm::dot(glm::normalize(reflectedLight), viewDir), hitInfo.material.shininess);
+			resColor = hitInfo.getMaterial(scene).ks * light.color * glm::pow(glm::dot(glm::normalize(reflectedLight), viewDir), hitInfo.getMaterial(scene).shininess);
 
 			//Keep the old hitInfo in case the reflected ray has no further intersections
 			HitInfo old = hitInfo;
@@ -89,12 +114,12 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 			lightRay.origin = old.hitPoint;
 			lightRay.direction = lightDir;
 
-			if (bvh.intersect(reflectedRay, hitInfo)) {
+			if (bvh.intersect(reflectedRay, hitInfo, useBVH)) {
 				//std::cout << "Refl Hit" << std::endl;
 				drawRay(reflectedRay, glm::vec3(1));
 				//drawRay(normalRay, glm::vec3(1, 0, 0));
 				level--;
-				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, cameraPos);
+				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, cameraPos, scene);
 			}
 			else {
 				//Restore old hitInfo because there was no hit
@@ -124,15 +149,19 @@ glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight
 
 
 // used for debugging the textures
-static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray) {
+static glm::vec3 getFinalColorNoRayTracingJustTextures(Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray) {
 	HitInfo hitInfo;
 
 
 
-	if(bvh.intersect(ray, hitInfo)) {
-		Material mat = hitInfo.material;
+	if(bvh.intersect(ray, hitInfo, useBVH)) {
+
+		// does not reflect rays so we only transfer the ray differentials
+		transfer_ray_differentials(ray, hitInfo.normal);
+
+		Material& mat = hitInfo.getMaterial(scene);
 		if(mat.kdTexture) {
-			Image texture = mat.kdTexture.value();
+			Image& texture = mat.kdTexture.value();
 
 			texture.setBorderColor(textureBorderColor);
 			texture.setOutOfBoundsRuleX(outOfBoundsRuleX);
@@ -145,7 +174,8 @@ static glm::vec3 getFinalColorNoRayTracingJustTextures(const Scene &scene, const
 			//return glm::vec3(1);
 
 			// return the color corresponding to the texture
-			return texture.getPixel(textureCoordinate);
+			float lod = computeLevelOfDetails(ray, hitInfo);
+			return texture.getPixel(hitInfo.texCoord, lod);
 		}
 
 		return glm::vec3(1);
@@ -169,48 +199,84 @@ static int plane_light_1D_ray_count = 3;
 static int glossy_ray_count = 10;
 static float refraction_factor = 0.8;
 // NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
-static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int level=0)
+static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int level=0)
 {
 	HitInfo hitInfo;
 
 	/*For every light calulate the addition from the reflected rays,
 	then add all of them*/
-	if (bvh.intersect(ray, hitInfo)) {
+	if (bvh.intersect(ray, hitInfo, useBVH)) {
+
+		tranfer_and_reflect_ray_differentials(ray, hitInfo);
+
 		drawRay(ray, glm::vec3(1));
 		glm::vec3 color(0);
-		hitInfo.normal = glm::normalize(hitInfo.normal);
-		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), hitInfo.normal);
-		
+
+		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), glm::normalize(hitInfo.normal));
+
+		// if textures to be used and the material has texture, use it
+		// also, avoid copying the texture over and over again
+		// to achieve this, a new material is created, that does not carry over the image, only the color in that particular point
+
+		Material& originalMaterial = hitInfo.getMaterial(scene);
+
+		Material matForRendering;
+		matForRendering.kd = originalMaterial.kd;
+		matForRendering.ks = originalMaterial.ks;
+		matForRendering.shininess = originalMaterial.shininess;
+		matForRendering.transparency = originalMaterial.transparency;
+
+		if (useTextures && hitInfo.is_triangle && originalMaterial.kdTexture)
+		{
+			Image& texture = originalMaterial.kdTexture.value();
+
+			texture.setBorderColor(textureBorderColor);
+			texture.setOutOfBoundsRuleX(outOfBoundsRuleX);
+			texture.setOutOfBoundsRuleY(outOfBoundsRuleY);
+			texture.setTextureFilteringMethod(textureFiltering);
+
+			// verticies
+			glm::vec2 textureCoordinate = hitInfo.texCoord;
+
+			
+
+			float lod = computeLevelOfDetails(ray, hitInfo); // the level of details, used in mipmapping, based on ray differentials
+			matForRendering.kd = texture.getPixel(hitInfo.texCoord, lod);
+		}
+
 		// Loop over all the lights that are not in shadow
 		for (const Lighting& light : getPointLights(hitInfo, reflect, scene, bvh)) {
-			color += calcColor(light, hitInfo.material);
+			color += calcColor(light, matForRendering);
 		}
 		for (const Lighting& light : getSpherelights(hitInfo, reflect, scene, bvh, sphere_light_ray_count)) {
-			color += calcColor(light, hitInfo.material);
+			color += calcColor(light, matForRendering);
 		}
 		for (const Lighting& light : getSpotLichts(hitInfo, reflect, scene, bvh)) {
-			color += calcColor(light, hitInfo.material);
+			color += calcColor(light, matForRendering);
 		}
 		for (const Lighting& light : getPlaneLights(hitInfo, reflect, scene, bvh, plane_light_1D_ray_count)) {
-			color += calcColor(light, hitInfo.material);
+			color += calcColor(light, matForRendering);
 		}
 
 		if (level >= max_reflection_level) {
 			return color;
 		}
-		
-		if (hitInfo.material.transparency == 1.0f) { // not tranparent
+
+		if (matForRendering.transparency == 1.0f)
+		{ // not tranparent
 			// calculate reflected light
-			if (hitInfo.material.ks.x > 0 || hitInfo.material.ks.y > 0 || hitInfo.material.ks.z > 0) {
+			if (matForRendering.ks.x > 0 || matForRendering.ks.y > 0 || matForRendering.ks.z > 0)
+			{
 
 				glm::vec3 reflectColor = glm::vec3(0);
 				// the ( + 0.01f * reflect ) is to prevent a surface reflecting itself
 				Ray refRay = { hitInfo.hitPoint + 0.01f * reflect, reflect };
 				// Calculate the color that is reflected
-				reflectColor += hitInfo.material.ks * getFinalColor(scene, bvh, refRay, level + 1);
-				
+				reflectColor += matForRendering.ks * getFinalColor(scene, bvh, refRay, level + 1);
+
 				// prevent divide by 0 and allow for prefect reflections
-				if (hitInfo.material.shininess != 0) {
+				if (matForRendering.shininess != 0)
+				{
 
 					//hitInfo.material.shininess = shininess;
 
@@ -229,7 +295,7 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 					glm::vec3 pr2 = glm::cross(reflect, pr1);
 
 					// how mutch should the rayes diviate (cos(angle)^shininess > 0.5)
-					float d = std::pow(0.5f, -1 / (float)hitInfo.material.shininess) * std::sqrt(1-std::pow(0.5, 2/(float)hitInfo.material.shininess));
+					float d = std::pow(0.5f, -1 / (float)matForRendering.shininess) * std::sqrt(1 - std::pow(0.5, 2 / (float)matForRendering.shininess));
 
 					//srand(6437376437);
 					for (int i = 1; i < glossy_ray_count; i++) {
@@ -250,21 +316,17 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 						if (glm::dot(shineDir, hitInfo.normal) > 0) {
 							// cast the ray
 							Ray shineRay = { hitInfo.hitPoint + 0.01f * shineDir, shineDir };
-							glm::vec3 ctmp = getFinalColor(scene, bvh, shineRay, level + 1) *std::max(std::pow(glm::dot(reflect, shineDir), hitInfo.material.shininess), 0.0f);
+							glm::vec3 ctmp = getFinalColor(scene, bvh, shineRay, level + 1) * std::max(std::pow(glm::dot(reflect, shineDir), matForRendering.shininess), 0.0f);
 							//std::cout << "r_r: " << ctmp.r << std::endl;
 							reflectColor += ctmp;
 						}
 					}
 					//std::cout << "r_final: " << (glossColor / (float)glossrays).r << std::endl;
-					color += hitInfo.material.ks * reflectColor / (float)glossy_ray_count;
-
+					color += matForRendering.ks * reflectColor / (float)glossy_ray_count;
 				}
 				else {
-					color += hitInfo.material.ks * reflectColor;
+					color += matForRendering.ks * reflectColor;
 				}
-
-
-				
 			}
 		}
 		else { // transparent
@@ -289,9 +351,9 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 			
 
 			// calculate how how much light should reflect and how much should refract
-			float& R0 = hitInfo.material.transparency;//R0static; // probebility of reflection at 0 rad/deg to normal
-			    
-				// simplified fersnel equasion
+			float &R0 = matForRendering.transparency; //R0static; // probebility of reflection at 0 rad/deg to normal
+
+			// simplified fersnel equasion
 			float reflectionChance = R0 + (1-R0)*(std::pow(1-c,5));
 			float refractionChance = 1 - reflectionChance;
 			
@@ -302,6 +364,15 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 				color += refractionChance * getFinalColor(scene, bvh, { hitInfo.hitPoint + 0.01f * refract, refract }, level + 1);
 			}
 
+		// calculate reflected light
+			if (matForRendering.ks.x > 0 || matForRendering.ks.y > 0 || matForRendering.ks.z > 0)
+			{
+				// the ( + 0.01f * reflect ) is to prevent a surface reflecting itself
+				Ray refRay = {hitInfo.hitPoint + 0.01f * reflect, reflect};
+				// Calculate the color that is reflected
+				glm::vec3 refection = matForRendering.ks * getFinalColor(scene, bvh, refRay, level + 1);
+				color += refection;
+			}
 		}
 		return color;
 	}
@@ -314,6 +385,7 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 	}
 }
 
+
 static void setOpenGLMatrices(const Trackball& camera);
 static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
 
@@ -321,8 +393,10 @@ static void renderOpenGL(const Scene& scene, const Trackball& camera, int select
 
 // This is the main rendering function. You are free to change this function in any way (including the function signature).
 // if texture debugging is set to true, the method will call the getFinalColorNoRayTracingJustTextures, instead of getFinalColor.
-static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen, bool textureDebugging = false)
+static void renderRayTracing(Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen, bool textureDebugging = false)
 {
+ProgressIndicator indicator;
+int pixelCount = 0;
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
@@ -338,22 +412,33 @@ static void renderRayTracing(const Scene& scene, const Trackball& camera, const 
 				screen.setPixel(x, y, getFinalColorNoRayTracingJustTextures(scene, bvh, cameraRay));
 			else
 				screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay));
+			
+			pixelCount++;
+			indicator.setProgress(pixelCount);
 		}
 	}
+
+	// applies bloom filter or gamma effect
+	screen.postprocessImage();
+
 }
 
 int main(int argc, char** argv)
 {
     Trackball::printHelp();
     std::cout << "\n Press the [R] key on your keyboard to create a ray towards the mouse cursor" << std::endl
+			  << "\n Press the [A] key on your keyboard to switch to OpenGL rendering mode" << std::endl
+			  << "\n Prsss the [B] key on your keyboard to switch to RayTracing mode" << std::endl
+			  << "\n Press the [C] key on your keyboard to switch to RayTracint Only Texture mode" << std::endl
               << std::endl;
 
     Window window { "Final Project - Part 2", windowResolution, OpenGLVersion::GL2 };
     Screen screen { windowResolution };
     Trackball camera { &window, glm::radians(50.0f), 3.0f };
     camera.setCamera(glm::vec3(0.0f, 0.0f, 0.0f), glm::radians(glm::vec3(20.0f, 20.0f, 0.0f)), 3.0f);
+	ViewMode viewMode{ViewMode::Rasterization};
 
-    SceneType sceneType { SceneType::SingleTriangle };
+	SceneType sceneType { SceneType::SingleTriangle };
     std::optional<Ray> optDebugRay;
     Scene scene = loadScene(sceneType, dataPath);
     BoundingVolumeHierarchy bvh { &scene };
@@ -373,9 +458,9 @@ int main(int argc, char** argv)
 	float sigma = 2.0f;
 	int kernel_num_repetitions = 1;
 
-	ViewMode viewMode { ViewMode::Rasterization };
 
-	bool drawWhenInTextureMode {false}; // controls whether the object is drawn or not when in texture mode. Used to reduce lag
+	
+
 
 	
 
@@ -397,10 +482,12 @@ int main(int argc, char** argv)
 			}
 			case GLFW_KEY_B: {
 				viewMode = ViewMode::RayTracing;
+				rayTracing_toBeRendered = true;
 				break;
 			}
 			case GLFW_KEY_C: {
 				viewMode = ViewMode::Textures;
+				rayTracing_toBeRendered = true;
 				break;
 			}
 			
@@ -415,14 +502,15 @@ int main(int argc, char** argv)
         // === Setup the UI ===
         ImGui::Begin("Final Project - Part 2");
         {
-            constexpr std::array items { "SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Teapot", "Dragon", /* "AABBs",*/ "Spheres", /*"Mixed",*/ "Custom" };
-            if (ImGui::Combo("Scenes", reinterpret_cast<int*>(&sceneType), items.data(), int(items.size()))) {
-                optDebugRay.reset();
+			constexpr std::array items{"SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Teapot", "Dragon", /* "AABBs",*/ "Spheres", "Chess", "Chess2", /*"Mixed",*/ "Custom"};
+			if (ImGui::Combo("Scenes", reinterpret_cast<int *>(&sceneType), items.data(), int(items.size())))
+			{
+				optDebugRay.reset();
                 scene = loadScene(sceneType, dataPath);
                 bvh = BoundingVolumeHierarchy(&scene);
                 if (optDebugRay) {
                     HitInfo dummy {};
-                    bvh.intersect(*optDebugRay, dummy);
+                    bvh.intersect(*optDebugRay, dummy, useBVH);
                 }
 			}
 		}
@@ -430,6 +518,9 @@ int main(int argc, char** argv)
             constexpr std::array items { "Rasterization", "Ray Traced", "Textures" };
             ImGui::Combo("View mode", reinterpret_cast<int*>(&viewMode), items.data(), int(items.size()));
         }
+
+		ImGui::Checkbox("Use BVH", &useBVH);
+
         if (ImGui::Button("Render to file")) {
             {
                 using clock = std::chrono::high_resolution_clock;
@@ -457,6 +548,7 @@ int main(int argc, char** argv)
 		ImGui::Checkbox("Gamma Correction", &gammaCorrection);
 		if(gammaCorrection)
 			ImGui::SliderFloat("Gamme Value", &gammaValue, 1, 5);
+
 
 		screen.enableGammaCorrection(gammaCorrection);
 		screen.setGammaValue(gammaValue);
@@ -492,7 +584,28 @@ int main(int argc, char** argv)
 			screen.setSigma(sigma);
 		}
 
-        ImGui::Spacing();
+		if (ImGui::TreeNode("Texture Settings"))
+		{
+
+
+			ImGui::Checkbox("Use Textures", &useTextures);
+
+
+			constexpr std::array filtering_modes{"Nearest Neighbor", "Bilinear", "Nearest Level Mipmapping", "Bilinear Mipmapping", "Trilinear Mipmapping"};
+			ImGui::Combo("Filtering Mode", reinterpret_cast<int *>(&textureFiltering), filtering_modes.data(), int(filtering_modes.size()));
+
+			constexpr std::array oob_x{"Border", "Clamping", "Repeat"};
+			ImGui::Combo("Out Of Bounds X", reinterpret_cast<int *>(&outOfBoundsRuleX), oob_x.data(), int(oob_x.size()));
+
+			constexpr std::array oob_y{"Border", "Clamping", "Repeat"};
+			ImGui::Combo("Out Of Bounds Y", reinterpret_cast<int *>(&outOfBoundsRuleY), oob_y.data(), int(oob_y.size()));
+
+			ImGui::ColorEdit3("Border color", glm::value_ptr(textureBorderColor));
+
+			ImGui::TreePop();
+		}
+
+		ImGui::Spacing();
         ImGui::Separator();
         ImGui::Text("Debugging");
         if (viewMode == ViewMode::Rasterization) {
@@ -501,23 +614,10 @@ int main(int argc, char** argv)
                 ImGui::SliderInt("BVH Level", &bvhDebugLevel, 0, bvh.numLevels() - 1);
                 ImGui::Checkbox("Show BVH leaf nodes", &bvhShowLeafNodes);
             }
+
+	
             
-        } else if(viewMode == ViewMode::Textures) {
-			{
-				ImGui::Checkbox("Draw", &drawWhenInTextureMode);
-
-				constexpr std::array filtering_modes{"Nearest Neighbor", "Bilinear", "Nearest Level Mipmapping", "Bilinear Mipmapping", "Trilinear Mipmapping"};
-				ImGui::Combo("Filteting Mode", reinterpret_cast<int *>(&textureFiltering), filtering_modes.data(), int(filtering_modes.size()));
-
-				constexpr std::array oob_x{"Border", "Clamping", "Repeat"};
-				ImGui::Combo("Out Of Bounds X", reinterpret_cast<int *>(&outOfBoundsRuleX), oob_x.data(), int(oob_x.size()));
-
-				constexpr std::array oob_y{"Border", "Clamping", "Repeat"};
-				ImGui::Combo("Out Of Bounds Y", reinterpret_cast<int *>(&outOfBoundsRuleY), oob_y.data(), int(oob_y.size()));
-
-				ImGui::ColorEdit3("Border color", glm::value_ptr(textureBorderColor));
-			}
-		}
+        } 
 
         ImGui::Spacing();
         ImGui::Separator();
@@ -630,21 +730,25 @@ int main(int argc, char** argv)
                 (void)getFinalColor(scene, bvh, *optDebugRay);
                 enableDrawRay = false;
             }
-            glPopAttrib();
+
+			glPopAttrib();
         } break;
         case ViewMode::RayTracing: {
-
-			
-
-            screen.clear(glm::vec3(0.0f));
-            renderRayTracing(scene, camera, bvh, screen);
-            screen.setPixel(0, 0, glm::vec3(1.0f));
-            screen.draw(); // Takes the image generated using ray tracing and outputs it to the screen using OpenGL.
-        } break;
+			if(rayTracing_toBeRendered) {
+				screen.clear(glm::vec3(0.0f));
+				renderRayTracing(scene, camera, bvh, screen);
+				rayTracing_toBeRendered = false;
+			}
+			screen.setPixel(0, 0, glm::vec3(1.0f));
+			screen.draw(); // Takes the image generated using ray tracing and outputs it to the screen using OpenGL.
+		} break;
 		case ViewMode::Textures: {
-			screen.clear(glm::vec3(0.0f));
 			// render in textureDebugging mode
-			if(drawWhenInTextureMode) renderRayTracing(scene, camera, bvh, screen, true);
+			if(rayTracing_toBeRendered) {
+				screen.clear(glm::vec3(0.0f));
+				renderRayTracing(scene, camera, bvh, screen, true);
+				rayTracing_toBeRendered = false;
+			}
 			screen.setPixel(0, 0, glm::vec3(1.0f));
 			screen.draw(); // Takes the image generated using ray tracing and outputs it to the screen using OpenGL.
 		} break;
@@ -663,10 +767,12 @@ int main(int argc, char** argv)
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             bvh.debugDraw(bvhDebugLevel, bvhShowLeafNodes);
-            glPopAttrib();
+
+			glPopAttrib();
         }
 
-        ImGui::End();
+
+		ImGui::End();
         window.swapBuffers();
     }
 

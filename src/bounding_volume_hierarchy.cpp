@@ -2,218 +2,10 @@
 #include "draw.h"
 
 
-// utility function, used for debugging
-void printAABB(AxisAlignedBox aabb) {
-	std::cout << "Lower " << aabb.lower.x << " " << aabb.lower.y << " " << aabb.lower.z << std::endl;
-	std::cout << "Upper " << aabb.upper.x << " " << aabb.upper.y << " " << aabb.upper.z << std::endl;
-	std::cout << std::endl;
-}
-
-unsigned long long Node::id = 0;
-unsigned long long BvhObject::id = 0;
-
 BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
 	: m_pScene(pScene)
 {
-	// reset the node and BvhObject reference ids;
-
-	Node::resetIdGenerator();
-	BvhObject::resetIdGenerator();
-
-	// as an example of how to iterate over all meshes in the scene, look at the intersect method below
-
-	// load the data from the scene
-	addBvhObjectsFromScene();
-
-    // BVH Tree Creation
     constructBVH();
-    //constructBVHParallely();
-
-    
-    
-}
-
-void BoundingVolumeHierarchy::constructBVH() {
-    // get all the bvhObjectIds
-    std::vector<unsigned long long> bvhObjectIds = getAllMapKeys(bvhObjects);
-
-    // create the root node at level 0
-    _root_id = createNode(bvhObjectIds, 0);
-
-    // create a queue for a BFS traversal of the tree
-    std::queue<std::pair<unsigned long long, unsigned int>> node_level_queue;
-
-	// insert the node _root_id and it's level inside the queue
-	node_level_queue.push(std::make_pair(_root_id, 0));
-
-    // do a BFS traversal of the tree
-    while (node_level_queue.size() > 0)
-    {
-        std::pair<unsigned long long, unsigned int> node_level = node_level_queue.front();
-        node_level_queue.pop();
-
-        unsigned long long node_id = node_level.first;
-        unsigned int level = node_level.second;
-        Node &node = nodes[node_id];
-
-        _max_level_achieved = std::max(_max_level_achieved, level);
-
-        // if the node is a leaf, we should stop splitting
-        if (node.isLeaf())
-            continue;
-
-        // otherwise, split the objects of the node into 2 groups
-        std::vector<unsigned long long> objectsAtNode = objects_at_node[node_id];
-        std::array<std::vector<unsigned long long>, 2> first_second = medianSplit(objectsAtNode, level % 3);
-
-		// create 2 new nodes based on the split, and add them as children to the current node as well as in the queue, for further processing
-		unsigned long long node_left_id = createNode(first_second[0], level + 1);
-		unsigned long long node_right_id = createNode(first_second[1], level + 1);
-
-		node.addChild(nodes[node_left_id]);
-		node.addChild(nodes[node_right_id]);
-
-        // add them to the queue
-        node_level_queue.push(std::make_pair(node_left_id, level + 1));
-        node_level_queue.push(std::make_pair(node_right_id, level + 1));
-    }
-    // for debugging only
-    //printHierarchy();
-}
-
-// splits a node asynchronously
-// should only be called on non leaf nodes
-void BoundingVolumeHierarchy::splitNode(SplitState &split_state) {
-    auto halves = medianSplit(split_state.associated_objects, split_state.level % 3);
-    split_state.left_associated_objects = halves[0];
-    split_state.right_associated_objects = halves[1];
-
-
-    auto leftBvhObjects = getMapValuesOfKeys(bvhObjects, split_state.left_associated_objects);
-    split_state.left_node = Node(leftBvhObjects, (split_state.level == split_state.max_level) || (split_state.left_associated_objects.size() < 1));
-
-    auto rightBvhObjects = getMapValuesOfKeys(bvhObjects, split_state.right_associated_objects);
-    split_state.right_node = Node(rightBvhObjects, (split_state.level == split_state.max_level) || ((split_state.right_associated_objects.size() < 1)));
-
-    //std::cout << "Am fost aici " << split_state.right_node.getId() << std::endl;
-    split_state.node.addChild(split_state.left_node);
-    split_state.node.addChild(split_state.right_node);
-    
-    
-}
-// updates the memory corresponding to that node
-void BoundingVolumeHierarchy::updateMemory(unsigned int level, Node &node, std::vector<unsigned long long> &associated_objects) {
-    nodes.insert(std::make_pair(node.getId(), node));
-    nodes_at_level[level].push_back(node.getId());
-    objects_at_node.insert(std::make_pair(node.getId(), associated_objects));
-
-    if(node.isLeaf()) {
-        leafNodes.push_back(node.getId());
-
-        // add the bvh children
-        auto bvh_objects = getMapValuesOfKeys(bvhObjects, associated_objects);
-
-        for(int i = 0; i < bvh_objects.size(); i++) {
-            node.addChild(bvh_objects[i]);
-        }
-
-    }
-
-}
-
-void BoundingVolumeHierarchy::constructBVHParallely() {
-    // get all the bvhObjectIds
-    std::vector<unsigned long long> bvhObjectIds = getAllMapKeys(bvhObjects);
-
-    // create the root node at level 0
-    _root_id = createNode(bvhObjectIds, 0);
-    Node& root = nodes[_root_id];
-
-    std::cout << "root " << root.getId() << std::endl;
-
-    std::vector<std::thread> threads_queue;
-    std::queue<std::pair<unsigned int, SplitState>> index_state_queue;
-
-    // update the memory corresponding to the root node
-    updateMemory(0, root, bvhObjectIds);
-    // add thread and split state to the queue
-    SplitState root_split_state = SplitState(root, bvhObjectIds, 0, _max_level);
-    threads_queue.push_back(std::move(std::thread(std::bind(&BoundingVolumeHierarchy::splitNode, this, std::ref<SplitState>(root_split_state)))));
-    index_state_queue.push(std::make_pair(threads_queue.size() - 1, root_split_state));
-
-
-    while(!index_state_queue.empty()) {
-        // get the treads index and it's state
-        auto index_state = index_state_queue.front();
-        index_state_queue.pop();
-        int thread_index = index_state.first;
-        SplitState state = index_state.second;
-
-
-        // join the thread
-        if(threads_queue[thread_index].joinable()) {
-            threads_queue[thread_index].join();
-
-            std::cout << state.right_associated_objects.size() << std::endl;
-
-            // update the memory for the left node
-            updateMemory(state.level + 1, state.left_node, state.left_associated_objects);
-
-            // create thread to split the left node, as long as it is not a leaf
-            if(!state.left_node.isLeaf()) {
-                SplitState left_node_split_state = SplitState(state.left_node, state.left_associated_objects, state.level + 1, _max_level);
-                threads_queue.push_back(std::thread(std::bind(&BoundingVolumeHierarchy::splitNode,this, std::ref<SplitState>(left_node_split_state))));
-                index_state_queue.push(std::make_pair(threads_queue.size() - 1, left_node_split_state));
-            }
-
-            // update the memory for the right node
-            updateMemory(state.level + 1, state.right_node, state.right_associated_objects);
-
-            // create thread to split the left node, as long as it is not a leaf
-            if (!state.right_node.isLeaf())
-            {
-                SplitState right_node_split_state = SplitState(state.right_node, state.right_associated_objects, state.level + 1, _max_level);
-                threads_queue.push_back(std::thread(std::bind(&BoundingVolumeHierarchy::splitNode, this, std::ref<SplitState>(right_node_split_state))));
-                index_state_queue.push(std::make_pair(threads_queue.size() - 1, right_node_split_state));
-            }
-        }
-    }
-
-
-    
-   
-}
-
-unsigned long long BoundingVolumeHierarchy::createNode(std::vector<unsigned long long>& bvhObjectIds, unsigned int level) {
-
-	bool isLeaf = (bvhObjectIds.size() <= 1 || _max_level == level) ? true : false;
-
-    // lock access to map
-    std::vector<BvhObject> objects = getMapValuesOfKeys(bvhObjects, bvhObjectIds);
-
-
-
-	Node n = Node(objects, isLeaf);
-
-
-	// if the node is a leaf node, add references to the objects
-	if (isLeaf) {
-		for (int i = 0; i < objects.size(); i++) {
-			n.addChild(objects[i]);
-		}
-		// add the node to the leaf nodes list
-		leafNodes.push_back(n.getId());
-	}
-
-	// add node to the nodes map
-	nodes.insert(std::make_pair(n.getId(), n));
-	// add node to nodes at level map
-	nodes_at_level[level].push_back(n.getId());
-	// asscociate the objects to the node
-	objects_at_node.insert(std::make_pair(n.getId(), bvhObjectIds));
-
-	return n.getId();
-
 }
 
 // Use this function to visualize your BVH. This can be useful for debugging. Use the functions in
@@ -222,523 +14,435 @@ unsigned long long BoundingVolumeHierarchy::createNode(std::vector<unsigned long
 void BoundingVolumeHierarchy::debugDraw(int level, bool showLeafNodes)
 {
 
-	// // Draw the AABB as a transparent green box.
-	// //AxisAlignedBox aabb{ glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
-	// //drawShape(aabb, DrawMode::Filled, glm::vec3(0.0f, 1.0f, 0.0f), 0.2f);
-
-	// // Draw the AABB as a (white) wireframe box.
-	// AxisAlignedBox aabb { glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
-	// //drawAABB(aabb, DrawMode::Wireframe);
-	// drawAABB(aabb, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
-
-	unsigned int level_to_extract = std::min((unsigned int)level, _max_level);
-
-	std::vector<unsigned long long> nodes_to_draw_ids = nodes_at_level[level_to_extract];
-	std::vector<Node> nodes_to_draw = getMapValuesOfKeys(nodes, nodes_to_draw_ids);
-
-	for (int i = 0; i < nodes_to_draw.size(); i++) {
-		Node& n = nodes_to_draw[i];
-		// draw the AABB in green
-		if (!showLeafNodes)
-			drawAABB(n.getBoundingBox(), DrawMode::Wireframe, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
-	}
-
-	// if the option is active, draw all of the leaf nodes in red.
-	if (showLeafNodes) {
-		// get all of the leaf nodes
-		std::vector<Node> leafNodesToDraw = getMapValuesOfKeys(nodes, leafNodes);
-
-		//std::cout << leafNodesToDraw.size() << std::endl;
-
-		for (int i = 0; i < leafNodesToDraw.size(); i++) {
-			Node& n = leafNodesToDraw[i];
-			// draw the leaf node AABB in red.
-			drawAABB(n.getBoundingBox(), DrawMode::Filled, glm::vec3(1.0f, 0.05f, 0.05f), 0.5);
-		}
-	}
-}
-
-
-// loads the data from the scene as BvhObjects
-void BoundingVolumeHierarchy::addBvhObjectsFromScene() {
-	// create BvhObjects for all elements of the scene (spheres and triangles), and add them to the bvhObjects map
-
-	// triangles
-
-	for (const auto& mesh : m_pScene->meshes)
-	{
-		for (const auto& tri : mesh.triangles)
-		{
-			glm::vec3 v0 = mesh.vertices[tri[0]].p;
-			glm::vec3 v1 = mesh.vertices[tri[1]].p;
-			glm::vec3 v2 = mesh.vertices[tri[2]].p;
-
-			BvhObject obj(v0, v1, v2, mesh.material);
-
-			bvhObjects.insert(std::make_pair(obj.getId(), obj));
-		}
-	}
-
-	// spheres
-
-	for (int i = 0; i < m_pScene->spheres.size(); i++)
-	{
-		Sphere sphere = m_pScene->spheres[i];
-
-		BvhObject obj = BvhObject(sphere, sphere.material);
-
-		bvhObjects.insert(std::make_pair(obj.getId(), obj));
-	}
-}
-
-// performs a split of the provided objects, based on the median value
-// split_axis = 0 - for x_axis; 1 - for y_axis; 2 - for z_axis
-std::array<std::vector<unsigned long long>, 2> BoundingVolumeHierarchy::medianSplit(std::vector<unsigned long long> bvhObjectIds, unsigned int split_axis)
-{
-	if (split_axis > 2)
-		throw std::invalid_argument("Invalid axis");
-
-	std::vector<std::pair<float, unsigned long long>> axis_values;
-
-	// extract the coordinates of the correct axis
-	for (auto id : bvhObjectIds) {
-		BvhObject obj = bvhObjects[id];
-		AxisAlignedBox aabb = obj.getAABB();
-
-		float weight = aabb.lower.x;
-
-		if (split_axis == 1)
-			weight = aabb.lower.y;
-		else
-			weight = aabb.lower.z;
-
-		axis_values.push_back(std::make_pair(weight, id));
-	}
-
-	// the half vector
-	std::vector<unsigned long long> firstHalf;
-	std::vector<unsigned long long> secondHalf;
-
-	// Old method, less efficient
-	// // sort the coordinate vector
-	// std::sort(axis_values.begin(), axis_values.end());
-
-	// // split in 2 halves
-
-	// for(int i = 0; i < axis_values.size() / 2; i++)
-	//     firstHalf.push_back(axis_values[i].second);
-
-    int medianPosition = axis_values.size() / 2;
-    std::nth_element(axis_values.begin(), axis_values.begin() + medianPosition + 1, axis_values.end());
-    // get the median value:
-    std::pair<float, unsigned long long>& medianElement = axis_values[medianPosition];
-
-    // std::cout << "Median " << medianElement.first << std::endl;
-    // for(int i = 0; i < axis_values.size(); i++) {
-    //     std::cout << axis_values[i].first << " ";
-    // }
-
-    // std::cout << std::endl;
-
-
-    // split the data in 2 halves, one smaller than the median, the other one larger
-    // if the median appears multiple times in the data, make sure that half of the medians end up in the first half
-    // and the other half in the second half
-
-    int numMedians = 0;
-
-    for(int i = 0; i < axis_values.size(); i++) {
-        if(std::abs(medianElement.first - axis_values[i].first) < 1e-7) { 
-            numMedians++;
+    if(showLeafNodes) {
+        for(const auto& node : nodes) {
+            if(node.isLeaf)
+                drawAABB(node.AABB, DrawMode::Wireframe, glm::vec3(0.0f, 0.0f, 1.0f));
         }
-    }
-   
-    int medianCnt = 0;
-
-    for(int i = 0; i < axis_values.size(); i++) {
-        std::pair<float, unsigned long long> element = axis_values[i];
-
-        // if it is smaller, put it in the first half
-        if(element.first < medianElement.first) {
-            firstHalf.push_back(element.second);
-        }
-        // else, put it in the second half
-        else if (element.first > medianElement.first) {
-            secondHalf.push_back(element.second);
-        }
-        // if the element is equal to the median
-        else {
-            
-            if(medianCnt < numMedians / 2) {
-                firstHalf.push_back(element.second);
-            }
-            else {
-                secondHalf.push_back(element.second);
-            }
-
-            medianCnt++;
-        }
+        return;
     }
 
-	for (int i = 0; i < axis_values.size(); i++) {
-		std::pair<float, unsigned long long> element = axis_values[i];
+    // Draw the AABB as a transparent green box.
+    //AxisAlignedBox aabb{ glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
+    //drawShape(aabb, DrawMode::Filled, glm::vec3(0.0f, 1.0f, 0.0f), 0.2f);
 
-		// if it is smaller, put it in the first half
-		if (element.first <= medianElement.first) {
-			firstHalf.push_back(element.second);
-		}
-		// else, put it in the second half
-		else {
-			secondHalf.push_back(element.second);
-		}
-	}
+    // Draw the AABB as a (white) wireframe box.
+    // AxisAlignedBox aabb { glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
+    // //drawAABB(aabb, DrawMode::Wireframe);
+    // drawAABB(aabb, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1f);
 
-
-	std::array<std::vector<unsigned long long>, 2> arr;
-	arr[0] = firstHalf;
-	arr[1] = secondHalf;
-
-	return arr;
+    for(const auto& index : node_indices_per_level[level]) {
+        Node n = nodes[index];
+        drawAABB(n.AABB, DrawMode::Wireframe, glm::vec3(1.0f, 0.0f, 0.0f));
+    }
 }
 
 int BoundingVolumeHierarchy::numLevels() const
 {
-	return _max_level_achieved + 1;
+    return max_level_achieved + 1;
 }
 
 // Return true if something is hit, returns false otherwise. Only find hits if they are closer than t stored
 // in the ray and if the intersection is on the correct side of the origin (the new t >= 0). Replace the code
 // by a bounding volume hierarchy acceleration structure as described in the assignment. You can change any
 // file you like, including bounding_volume_hierarchy.h .
-bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo) const
+bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool useBVH) const
 {
-	bool hit = false;
-	if(getIntersection(ray, _root_id, hitInfo)) {
-		hit = true;
-	}
-	return hit;
-}
-
-// Checks the given node's BvhObjects against the ray for any intersections
-// Returns true if there is an intersection with any of them
-// hitInfo and ray.t are modified as the intersections occur
-bool BoundingVolumeHierarchy::checkChildBvh(Ray& ray, Node node, HitInfo& hitInfo) const{
-	bool res = false;
-	for (auto& child : node.getChildren()) {
-		BvhObject object = bvhObjects.at(child);
-		if (object.getType() == "triangle") {
-			std::array<glm::vec3, 3> triangle = object.getTriangle();
-			if (intersectRayWithTriangle(triangle[0], triangle[1], triangle[2], ray, hitInfo)) {
-				hitInfo.material = object.getMaterial();
-				res =  true;
-			}
-		}
-		else {
-			if (intersectRayWithShape(object.getSphere(), ray, hitInfo)) {
-				hitInfo.material = object.getMaterial();
-				res = true;
-			}
-		}
-		res |= res;
-	}
-	float t_old = ray.t;
-	return res;
-}
-
-// Checks the given node's AABB against the ray for any intersections
-// Returns true if there is an intersection
-// ray.t is restored to the original value so it doesn't interfere
-// with further intersection tests against BvhObject nodes
-bool BoundingVolumeHierarchy::checkNode(Ray& ray, Node node) const {
-	float t_old = ray.t;
-	if (intersectRayWithShape(node.getBoundingBox(), ray)) {
-		ray.t = t_old;
-		return true;
-	}
-	ray.t = t_old;
-	return false;
-}
-
-// Goes through the intersecting nodes of the BVH recursively
-// hitInfo is updated through the function calls
-// Returns true if there is an intersection with the scene
-bool BoundingVolumeHierarchy::getIntersection(Ray& ray, unsigned long long box_id, HitInfo& hitInfo) const { 
-	Node node = nodes.at(box_id);
-	if (checkNode(ray, node)) { //check if parent is intersected
-		if (node.isLeaf() && node.getChildren().size() > 0) { //if node is leaf we retrieve the primitives
-			return checkChildBvh(ray, node, hitInfo);
-		}
-		else { //node wasnt't a leaf so we get the 2 children
-			//get their intersections (if any)
-			bool left = getIntersection(ray, node.getChildren()[0], hitInfo);
-			float t_left = ray.t; 
-			HitInfo hit_left = hitInfo;
-			bool right = getIntersection(ray, node.getChildren()[1], hitInfo);
-			float t_right = ray.t;
-			HitInfo hit_right = hitInfo;
-			
-			//return the smallest t_value
-			if (t_left < t_right) {
-				ray.t = t_left;
-				hitInfo = hit_left;
-			}
-			else {
-				ray.t = t_right;
-				hitInfo = hit_right;
-			}
-			//return bool value for hit
-			return left || right;
-		}
-	}
-	else {
-		return false;
-	}
-}
-
-
-// prints a textual representation of the hierarchy
-void BoundingVolumeHierarchy::printHierarchy() {
-	std::cout << "View per level" << std::endl;
-	std::cout << "----\n\n" << std::endl;
-
-	for (int i = 0; i <= _max_level_achieved; i++) {
-		std::vector<unsigned long long> ids = nodes_at_level[i];
-
-		std::cout << "Level " << i << std::endl;
-
-		for (const auto& id : ids) {
-			std::cout << "Node " << id << std::endl;
-			std::vector<unsigned long long> objs = objects_at_node[id];
-			for (const auto& obj_id : objs) {
-				std::cout << obj_id << " ";
-			}
-			std::cout << std::endl;
-		}
-
-		std::cout << std::endl;
-		std::cout << std::endl;
-	}
-
-}
-
-// BvhObject Implementation
-
-
-//ctr default
-BvhObject::BvhObject() {
-
-
-}
-
-
-// ctr triangle
-BvhObject::BvhObject(glm::vec3& v0, glm::vec3& v1, glm::vec3& v2, Material mat) {
-
-	_id = id++;
-
-	// construct AABB for the triangle
-	_boundingBox.lower.x = std::min(std::min(v0.x, v1.x), v2.x);
-	_boundingBox.lower.y = std::min(std::min(v0.y, v1.y), v2.y);
-	_boundingBox.lower.z = std::min(std::min(v0.z, v1.z), v2.z);
-
-	_boundingBox.upper.x = std::max(std::max(v0.x, v1.x), v2.x);
-	_boundingBox.upper.y = std::max(std::max(v0.y, v1.y), v2.y);
-	_boundingBox.upper.z = std::max(std::max(v0.z, v1.z), v2.z);
-
-	// set the type of the object to triangle
-	_type = _TRIANGLE_TYPE;
-
-	// set the material of the triangle
-	_material = mat;
-
-	// store reference to the triangle
-	_triangle[0] = v0;
-	_triangle[1] = v1;
-	_triangle[2] = v2;
-}
-
-// cre sphere
-BvhObject::BvhObject(Sphere& sphere, Material mat) {
-
-	_id = id++;
-
-	// construct the AABB for the sphere
-	_boundingBox.lower.x = sphere.center.x - sphere.radius;
-	_boundingBox.lower.y = sphere.center.y - sphere.radius;
-	_boundingBox.lower.z = sphere.center.z - sphere.radius;
-
-	_boundingBox.upper.x = sphere.center.x + sphere.radius;
-	_boundingBox.upper.y = sphere.center.y + sphere.radius;
-	_boundingBox.upper.z = sphere.center.z + sphere.radius;
-
-
-	// set the type
-	_type = _SPHERE_TYPE;
-
-	// set the material of the sphere
-	_material = mat;
-
-	// store reference to the sphere
-	_sphere[0] = sphere;
-}
-
-std::array<glm::vec3, 3> BvhObject::getTriangle() const {
-	if (_type != _TRIANGLE_TYPE)
-		throw std::exception();
-
-	return _triangle;
-}
-
-Sphere BvhObject::getSphere() const {
-	if (_type != _SPHERE_TYPE)
-		throw std::exception();
-
-	return _sphere[0];
-}
-
-AxisAlignedBox BvhObject::getAABB() const {
-	return _boundingBox;
-}
-
-std::string BvhObject::getType() const {
-	return _type;
-}
-
-unsigned long long BvhObject::getId() const {
-	return _id;
-}
-
-Material BvhObject::getMaterial() const {
-	return _material;
-}
-
-// after calling the this function, the ids of the further declared objects will start again at 0.
-void BvhObject::resetIdGenerator() {
-	BvhObject::id = 0;
-}
-
-// Node Implementation
-
-
-Node::Node() {
-
-}
-
-Node::Node(std::vector<BvhObject>& containingBvhObjectss, bool isLeaf) {
-
-	// set the id
-	_id = id++;
-
-	// set the isLeaf
-
-	_isLeaf = isLeaf;
-
-	// initialize the bounding box
-	_boundingBox.lower.x = std::numeric_limits<float>::max();
-	_boundingBox.lower.y = std::numeric_limits<float>::max();
-	_boundingBox.lower.z = std::numeric_limits<float>::max();
-
-	_boundingBox.upper.x = -std::numeric_limits<float>::max();
-	_boundingBox.upper.y = -std::numeric_limits<float>::max();
-	_boundingBox.upper.z = -std::numeric_limits<float>::max();
-
-
-
-
-	for (auto object : containingBvhObjectss) {
-		AxisAlignedBox aabb = object.getAABB();
-		updateAABB(aabb);
-	}
-}
-
-bool Node::isLeaf() const {
-	return _isLeaf;
-}
-
-void Node::addChild(Node& other) {
-    if(isLeaf()) {
-        std::cerr << "Cannot add node to leaf" << std::endl;
-        throw std::exception();
+    if(!useBVH) {
+        bool hit = false; 
+        // Intersect with all triangles of all meshes.
+        int material_index = 0;
+        for (const auto& mesh : m_pScene->meshes) {
+            for (const auto& tri : mesh.triangles) {
+                const auto v0 = mesh.vertices[tri[0]];
+                const auto v1 = mesh.vertices[tri[1]];
+                const auto v2 = mesh.vertices[tri[2]];
+                const Material& m = mesh.material;
+                if (intersectRayWithTriangleWithInterpolation(v0, v1, v2, ray, hitInfo, material_index))
+                {
+                    hit = true;
+                }
+            }
+            material_index++;
+        }
+        // Intersect with spheres.
+        for (const auto& sphere : m_pScene->spheres)
+            hit |= intersectRayWithShape(sphere, ray, hitInfo);
+        return hit;
     }
 
-	_children.push_back(other.getId());
+    if(getRootIndex() < 0)
+        return false;
 
+    return intersectBVH(getRootIndex(), ray, hitInfo);
 }
 
-void Node::addChild(BvhObject& object) {
-    if (!isLeaf()){
-        std::cerr << "Cannot add object to non leaf" << std::endl;
-        throw std::exception();
+void BoundingVolumeHierarchy::loadObjectsFromScene() 
+{
+    int meshIndex = 0;
+    for (const auto& mesh : m_pScene->meshes) {
+        for (const auto &tri : mesh.triangles)
+        {
+            const auto v0 = mesh.vertices[tri[0]];
+            const auto v1 = mesh.vertices[tri[1]];
+            const auto v2 = mesh.vertices[tri[2]];
+            std::array<Vertex, 3> triangle {v0, v1, v2};
+            triangles.push_back(triangle);
+            triangle_materials.push_back(meshIndex);
+        }
+        meshIndex++;
+    }
+    // Intersect with spheres.
+    for (const auto& sphere : m_pScene->spheres) {
+        spheres.push_back(sphere);
+    }
+}
+
+int BoundingVolumeHierarchy::getRootIndex() const {
+    if(nodes.size() == 0)
+        return -1;
+
+    return 0;
+}
+
+void BoundingVolumeHierarchy::constructBVH() {
+    std::queue<std::pair<int, int>> node_indices_level_queue; // queue storing a node index and it's level
+
+    // load the objects from the scene
+    loadObjectsFromScene();
+
+
+    // create a vector of all indices and the is_triangle vectors
+    std::vector<int> object_indices;
+    std::vector<bool> is_triangle;
+    for(int i = 0; i < triangles.size(); i++) {
+        object_indices.push_back(i);
+        is_triangle.push_back(true);
     }
 
-	_children.push_back(object.getId());
+    for(int i = 0; i < spheres.size(); i++) {
+        object_indices.push_back(i);
+        is_triangle.push_back(false);
+    }
+
+    // cannot create BVH from 0 objects
+    if(object_indices.size() == 0) {
+        max_level_achieved = -1;
+    }
+
+    int root_level = 0;
+    max_level_achieved = 0;
+
+
+    // create the root node
+   createNodeAndUpdateStats(object_indices, is_triangle, root_level);
+
+
+
+   node_indices_level_queue.push(std::make_pair(nodes.size() - 1, root_level));
+
+   // generate the tree using BFS
+
+   while (!node_indices_level_queue.empty())
+   {
+       // get the node from the queue
+       auto node_index_level = node_indices_level_queue.front();
+       int node_index = node_index_level.first;
+       int level = node_index_level.second;
+       max_level_achieved = std::max(max_level_achieved, level);
+       node_indices_level_queue.pop();
+
+
+       auto node_object_indices = object_indices_per_node[node_index];
+       auto node_is_triangle = is_triangle_stats_per_node[node_index];
+
+       // if the node is a leaf, add the objects as children and and stop splitting
+       if (nodes.at(node_index).isLeaf)
+       {
+           nodes[node_index].children = node_object_indices;
+           nodes[node_index].is_triangle = node_is_triangle;
+
+           continue;
+       }
+
+       // we are now at the next level
+       level++;
+
+       // create the left and the right nodes
+
+       // sort the objects based on the relevant axis
+       sortObjects(node_object_indices, node_is_triangle, level);
+
+
+       // split the objects into 2
+       std::vector<int> node_object_indices_left, node_object_indices_right;
+       std::vector<bool> node_is_triangle_left, node_is_triangle_right;
+
+       // the left vectors
+       for (int i = 0; i < (node_object_indices.size() + 1) / 2; i++)
+       {
+           node_object_indices_left.push_back(node_object_indices[i]);
+           node_is_triangle_left.push_back(node_is_triangle[i]);
+       }
+
+       // the right vectors
+       for (int i = (node_object_indices.size() + 1) / 2; i < node_object_indices.size(); i++)
+       {
+           node_object_indices_right.push_back(node_object_indices[i]);
+           node_is_triangle_right.push_back(node_is_triangle[i]);
+       }
+
+
+       // if the size is smaller than 0, there is no point in creating a node
+       if (node_object_indices_left.size() > 0)
+       {
+           // create the left and the right vectors and add them to the queue
+           // left
+           createNodeAndUpdateStats(node_object_indices_left, node_is_triangle_left, level);
+           node_indices_level_queue.push(std::make_pair(nodes.size() - 1, level)); // add the left node to the queue
+           // add the child to the parent
+           nodes[node_index].children.push_back(nodes.size() - 1);
+        }
+
+
+        if(node_object_indices_right.size() > 0) {
+            // right node
+            createNodeAndUpdateStats(node_object_indices_right, node_is_triangle_right, level);
+            node_indices_level_queue.push(std::make_pair(nodes.size() - 1, level)); // add the right node to the queue
+
+            nodes[node_index].children.push_back(nodes.size() - 1);
+        }
+
+    }
 }
 
-void Node::updateAABB(AxisAlignedBox& other) {
+void BoundingVolumeHierarchy::createNodeAndUpdateStats(std::vector<int> &object_indices, std::vector<bool> &is_triangle, int level) {
 
-	// the AABB corresponding to the node should be the smallest one that contains all other AABBs
-	// hence the minimum point should be the minimum of all the children's minimum points
-	// the maximum point should be the maximum of all the children's maximum points.
-	_boundingBox.lower.x = std::min(other.lower.x, _boundingBox.lower.x);
-	_boundingBox.lower.y = std::min(other.lower.y, _boundingBox.lower.y);
-	_boundingBox.lower.z = std::min(other.lower.z, _boundingBox.lower.z);
+    if(!validateObjectVectorPair(object_indices, is_triangle))
+        return;
 
-	_boundingBox.upper.x = std::max(other.upper.x, _boundingBox.upper.x);
-	_boundingBox.upper.y = std::max(other.upper.y, _boundingBox.upper.y);
-	_boundingBox.upper.z = std::max(other.upper.z, _boundingBox.upper.z);
+
+    nodes.push_back(createNodeFromObjects(object_indices, is_triangle, level));
+
+
+    object_indices_per_node.insert(std::make_pair(nodes.size() - 1, object_indices));
+
+
+    is_triangle_stats_per_node.insert(std::make_pair(nodes.size() - 1, is_triangle));
+
+    node_indices_per_level[level].push_back(nodes.size() - 1);
+
 }
 
-// returns the ids of the children of the children
-std::vector<unsigned long long> Node::getChildren() const {
-	return _children;
+Node BoundingVolumeHierarchy::createNodeFromObjects(std::vector<int> &object_indices, std::vector<bool> &is_triangle, int level) const {
+
+    if(!validateObjectVectorPair(object_indices, is_triangle))
+        return Node();
+
+
+    if(object_indices.size() <= 1 || level >= max_level) {
+        // leaf node
+        Node n;
+        n.isLeaf = true;
+        n.AABB = createAabbFromObjects(object_indices, is_triangle);
+
+
+        return n;
+    }
+
+
+    // normal node
+    Node n;
+    n.isLeaf = false;
+    n.AABB = createAabbFromObjects(object_indices, is_triangle);
+
+
+    return n;
+
 }
 
-unsigned long long Node::getId() const {
-	return _id;
+
+AxisAlignedBox BoundingVolumeHierarchy::createAabbFromObjects(std::vector<int> &object_indices, std::vector<bool> &is_triangle) const {
+    if(!validateObjectVectorPair(object_indices, is_triangle))
+        return AxisAlignedBox {glm::vec3(0), glm::vec3(0)};
+    
+    glm::vec3 p_min = glm::vec3(std::numeric_limits<float>::max());
+    glm::vec3 p_max = glm::vec3(-std::numeric_limits<float>::max());
+
+
+    for(int i = 0; i < object_indices.size(); i++) {
+
+
+        if(is_triangle[i]) {
+            // triangle case
+            std::array<Vertex, 3> triangle = triangles.at(object_indices[i]);
+
+            p_min = glm::min(glm::min(p_min, triangle[0].p), glm::min(triangle[1].p, triangle[2].p));
+            p_max = glm::max(glm::max(p_max, triangle[0].p), glm::max(triangle[1].p, triangle[2].p));
+        }
+        else {
+            // sphere case
+            Sphere sph = spheres.at(object_indices[i]);
+            glm::vec3 sph_min = sph.center - glm::vec3(sph.radius);
+            glm::vec3 sph_max = sph.center + glm::vec3(sph.radius);
+
+            p_min = glm::min(p_min, glm::min(sph_min, sph_max));
+            p_max = glm::max(p_max, glm::max(sph_min, sph_max));
+
+        }
+    }
+
+
+    return AxisAlignedBox {p_min, p_max};
 }
 
-AxisAlignedBox Node::getBoundingBox() const {
-	return _boundingBox;
+void BoundingVolumeHierarchy::sortObjects(std::vector<int> &object_indices, std::vector<bool> &is_triangle, int level) const {
+    if(!validateObjectVectorPair(object_indices, is_triangle))
+        return;
+
+    std::vector<std::pair<float, int>> attribute_index;
+
+    for(int i = 0; i < object_indices.size(); i++) {
+        attribute_index.push_back(std::make_pair(getSortingAttribute(object_indices[i], is_triangle[i], level), i));
+    }
+
+    std::sort(attribute_index.begin(), attribute_index.end());
+
+    std::vector<int> object_indices_copy(object_indices);
+    std::vector<bool> is_triangle_copy(is_triangle);
+
+    for(int i = 0; i < object_indices_copy.size(); i++) {
+        object_indices[i] = object_indices_copy[attribute_index[i].second];
+        is_triangle[i] = is_triangle_copy[attribute_index[i].second];
+    }
+    
 }
 
-// after calling the this function, the ids of the further declared ndoes will start again at 0.
-void Node::resetIdGenerator()
-{
-	Node::id = 0;
+float BoundingVolumeHierarchy::getSortingAttribute(int object_index, bool is_triangle, int level) const {
+    if(is_triangle)
+        return getSortingAttributeTriangle(object_index, level);
+    
+    return getSortingAttributeSphere(object_index, level);
 }
 
-// Utility functions to get all keys and all values from a map
-template <typename K, typename V>
-std::vector<K> BoundingVolumeHierarchy::getAllMapKeys(std::map<K, V> mp) const {
+float BoundingVolumeHierarchy::getSortingAttributeTriangle(int triangle_index, int level) const {
+    if (!validateTriangleIndex(triangle_index))
+        return 0.0f;
 
-	std::vector<K> keys;
+    int attr = level % 3;
 
-	for (auto const& it : mp) {
-		keys.push_back(it.first);
-	}
+    std::array<Vertex, 3> triangle = triangles.at(triangle_index);
 
-	return keys;
+    if(attr == 0) {
+        return (triangle[0].p.x + triangle[1].p.x + triangle[2].p.x) / 3;
+    }
+    else if(attr == 1) {
+        return (triangle[0].p.y + triangle[1].p.y + triangle[2].p.y) / 3;
+    }
+
+    return (triangle[0].p.z + triangle[1].p.z + triangle[2].p.z) / 3;
 }
 
-template <typename K, typename V>
-std::vector<V> BoundingVolumeHierarchy::getAllMapValues(std::map<K, V> mp) const {
 
-	std::vector<V> values;
+float BoundingVolumeHierarchy::getSortingAttributeSphere(int sphere_index, int level) const {
 
-	for (const auto& it : mp) {
-		values.push_back(it->second);
-	}
+    if(!validateSphereIndex(sphere_index))
+        return 0.0f;
 
-	return values;
+    int attr = level % 3;
+
+    Sphere sphere = spheres.at(sphere_index);
+
+    // return either the x, y or z coordinate of the center of the sphere based on the level
+
+    if(attr == 0) {
+        return sphere.center.x;
+    }
+    else if(attr == 1) {
+        return sphere.center.y;
+    }
+
+    return sphere.center.z;
 }
 
-template <typename K, typename V>
-std::vector<V> BoundingVolumeHierarchy::getMapValuesOfKeys(std::map<K, V> mp, std::vector<K> keys) const {
-	std::vector<V> values;
+bool BoundingVolumeHierarchy::validateObjectVectorPair(std::vector<int> &object_indices, std::vector<bool> &is_triangle) const {
+    if (object_indices.size() != is_triangle.size()) {
+        std::cerr << "Invalid pair!" << std::endl;
+        return false;
+    }
 
-	for (const auto& key : keys) {
-		values.push_back(mp[key]);
-	}
+    return true;
+}
 
-	return values;
+bool BoundingVolumeHierarchy::validateSphereIndex(int index) const {
+    if (index < 0 || index >= spheres.size()) {
+        std::cerr << "Invalid sphere index " << index << std::endl;
+        return false;
+    }
+
+    return true;       
+}
+
+bool BoundingVolumeHierarchy::validateTriangleIndex(int index) const {
+    if (index < 0 || index >= triangles.size()) {
+        std::cerr << "Invalid triangle index " << index << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+bool BoundingVolumeHierarchy::intersectNode(int node_index, Ray &ray) const{
+    float t_old = ray.t;
+    bool intersect = intersectRayWithShape(nodes.at(node_index).AABB, ray);
+    ray.t = t_old;
+
+    return intersect;
+}
+
+bool BoundingVolumeHierarchy::intersectObject(int object_index, bool is_triangle, Ray &ray, HitInfo &hitInfo) const {
+    if(is_triangle) {
+        auto triangle = triangles.at(object_index);
+        return intersectRayWithTriangleWithInterpolation(triangle[0], triangle[1], triangle[2], ray, hitInfo, triangle_materials.at(object_index));
+    }
+
+    // is sphere
+    auto sphere = spheres.at(object_index);
+    return intersectRayWithShape(sphere, ray, hitInfo);
+}
+
+bool BoundingVolumeHierarchy::intersectBVH(int node_index, Ray &ray, HitInfo &hitInfo) const {
+
+    // if the current node is not intersected, return false
+    if(!intersectNode(node_index, ray))
+        return false;
+
+    Node n = nodes.at(node_index);
+
+    if(n.isLeaf) {
+        // do the intersection with the child shapes and return
+        bool interesected = false;
+
+        for(int i = 0; i < n.children.size(); i++) {
+            int object_index = n.children.at(i);
+            bool is_triangle = n.is_triangle.at(i);
+
+            interesected |= intersectObject(object_index, is_triangle, ray, hitInfo);
+        }
+
+
+
+        return interesected;
+    }
+
+    // if it is not a leaf, do the intersection with the nodes
+    bool intersected = false;
+    for(int i = 0; i < n.children.size(); i++) {
+        int node_index = n.children.at(i);
+
+        intersected |= intersectBVH(node_index, ray, hitInfo);
+
+    }
+
+    return intersected;
 }
