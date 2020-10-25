@@ -159,9 +159,9 @@ static glm::vec3 getFinalColorNoRayTracingJustTextures(Scene &scene, const Bound
 		// does not reflect rays so we only transfer the ray differentials
 		transfer_ray_differentials(ray, hitInfo.normal);
 
-		const Material& mat = hitInfo.getMaterial(scene);
+		Material& mat = hitInfo.getMaterial(scene);
 		if(mat.kdTexture) {
-			Image texture = mat.kdTexture.value();
+			Image& texture = mat.kdTexture.value();
 
 			texture.setBorderColor(textureBorderColor);
 			texture.setOutOfBoundsRuleX(outOfBoundsRuleX);
@@ -353,9 +353,7 @@ int main(int argc, char** argv)
 	int kernel_num_repetitions = 1;
 
 
-	// Vertex normal interpolation debugging
-	bool show_vertex_normals = false;
-
+	
 
 
 	
@@ -506,8 +504,7 @@ int main(int argc, char** argv)
                 ImGui::Checkbox("Show BVH leaf nodes", &bvhShowLeafNodes);
             }
 
-			ImGui::Checkbox("Show vertex normals", &show_vertex_normals);
-			
+	
             
         } 
 
@@ -659,7 +656,6 @@ int main(int argc, char** argv)
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             bvh.debugDraw(bvhDebugLevel, bvhShowLeafNodes);
-			showVertexNormals(scene, show_vertex_normals);
 
 			glPopAttrib();
         }
