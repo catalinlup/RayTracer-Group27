@@ -70,7 +70,8 @@ Image::Image(const std::filesystem::path& filePath)
         initMipmap();
 
     //used for debugging
-    //printMipmap();
+    const std::string name = filePath.filename();
+    //printMipmap(name);
 }
 
 glm::vec3 Image::getPixel(glm::vec2 textureCoordinates, float lod) const
@@ -529,13 +530,13 @@ bool Image::getBestLevelMipmap(unsigned int &best_level, float lod, unsigned int
 
 
 // used only for debugging purposes
-void Image::printMipmap() {
+void Image::printMipmap(const std::string name) {
 
-    
+    std::cout << name << std::endl;
 
     for(int level = 0; level < getNumMipmapLevels(); level++) {
        switchToLevel(level);
-        std::string filename = "level_";
+        std::string filename = name  + "_level_";
         filename.push_back((char)(level + '0'));
         filename += ".bmp";
 

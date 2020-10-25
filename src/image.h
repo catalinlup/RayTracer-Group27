@@ -174,6 +174,6 @@ private:
 
     
 
-    void printMipmap();
+    void printMipmap(const std::string name);
 };
 
