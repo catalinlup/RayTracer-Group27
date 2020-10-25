@@ -4,6 +4,8 @@
 
 #define SHADOW_ERROR_OFFSET 0.0005f
 
+//#define USE_MONTE_CARLO_INTEGRATION
+
 bool isInHardShadow(const glm::vec3 point, const Scene& scene, const BoundingVolumeHierarchy& bvh);
 
 struct Lighting {

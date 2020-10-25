@@ -27,7 +27,7 @@ bool enableDrawRay = false;
 static void setMaterial(const Material& material)
 {
     // Set the material color of the shape.
-    const glm::vec4 kd4 { material.kd, 1.0f };
+    const glm::vec4 kd4 { material.kd, material.transparency*0.9 + 0.1 };
     glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, glm::value_ptr(kd4));
 
     const glm::vec4 zero { 0.0f };
@@ -37,6 +37,8 @@ static void setMaterial(const Material& material)
 
 void drawMesh(const Mesh& mesh)
 {
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
     setMaterial(mesh.material);
 
     glBegin(GL_TRIANGLES);
@@ -198,6 +200,16 @@ void drawRay(const Ray& ray, const glm::vec3& color)
 
         if (hit)
             drawSphere(hitPoint, 0.005f, glm::vec3(0, 1, 0));
+
+        glDepthFunc(GL_GREATER); // if ray is behind somthing draw a darker line
+        glBegin(GL_LINES);
+        glm::vec3 color2 = 0.5f * color;
+        glColor3fv(glm::value_ptr(color2));
+        glVertex3fv(glm::value_ptr(ray.origin));
+        glColor3fv(glm::value_ptr(color2));
+        glVertex3fv(glm::value_ptr(hitPoint));
+        glEnd();
+        glDepthFunc(GL_LEQUAL);
 
         glPopAttrib();
     }
