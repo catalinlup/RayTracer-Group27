@@ -10,6 +10,8 @@ DISABLE_WARNINGS_PUSH()
 #include <string>
 DISABLE_WARNINGS_POP()
 
+#define M_PI 3.1415926535893238
+
 Screen::Screen(const glm::ivec2& resolution)
     : m_resolution(resolution)
     , m_textureData(size_t(resolution.x * resolution.y), glm::vec3(0.0f))
