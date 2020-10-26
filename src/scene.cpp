@@ -49,7 +49,7 @@ Scene loadScene(SceneType type, const std::filesystem::path &dataDir)
     } break;
     case Monkey: {
         // Load a 3D model of a Dragon
-        auto subMeshes = loadMesh(dataDir / "monkey-rotated.obj", true);
+        auto subMeshes = loadMesh(dataDir / "monkey-textured.obj", true);
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
         scene.pointLights.push_back(PointLight{glm::vec3(-1, 1, -1), glm::vec3(1)});
         scene.pointLights.push_back(PointLight{glm::vec3(1, -1, -1), glm::vec3(1)});
@@ -115,7 +115,7 @@ Scene loadScene(SceneType type, const std::filesystem::path &dataDir)
     break;
     case ChessBoard2:
     {
-        auto subMeshes = loadMesh(dataDir / "checker2.obj");
+        auto subMeshes = loadMesh(dataDir / "chess_square.obj");
         subMeshes[0].material.kd = glm::vec3(1.0f);
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
         scene.sphericalLight.push_back(SphericalLight{glm::vec3(-1, 100, -25), 10, glm::vec3(1)});

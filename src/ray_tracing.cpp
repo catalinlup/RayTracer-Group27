@@ -287,8 +287,9 @@ bool barycentricCoordinates(const glm::vec3 &v0, const glm::vec3 &v1, const glm:
         return false;
 
     float c0 = parallelogramArea(p, v1, v2) / totalArea;
-    float c1 = parallelogramArea(v0, p, v2) / totalArea;
-    float c2 = parallelogramArea(v0, v1, p) / totalArea;
+    float c1 = parallelogramArea(p, v0, v2) / totalArea;
+    float c2 = parallelogramArea(p, v0, v1) / totalArea;
+
 
     coords.x = c0;
     coords.y = c1;

@@ -37,7 +37,6 @@ void Screen::setPixel(int x, int y, const glm::vec3& color)
 
 void Screen::writeBitmapToFile(const std::filesystem::path& filePath)
 {
-    applyBloomEffect();
 
     std::vector<glm::u8vec4> textureData8Bits(m_textureData.size());
     std::transform(std::begin(m_textureData), std::end(m_textureData), std::begin(textureData8Bits),
@@ -68,7 +67,6 @@ void Screen::postprocessImage() {
 
 void Screen::draw()
 {
-    
 
     drawImage(m_textureData);
 

@@ -71,7 +71,7 @@ Image::Image(const std::filesystem::path& filePath)
 
     //used for debugging
     const std::string name = filePath.filename();
-    //printMipmap(name);
+    printMipmap(name);
 }
 
 glm::vec3 Image::getPixel(glm::vec2 textureCoordinates, float lod) const
@@ -236,6 +236,8 @@ glm::vec3 Image::bilinearInterpolation(glm::vec2 imageCoordinates, int level, un
     
     float y_low = std::floor(imageCoordinates.y);
     float y_high = std::ceil(imageCoordinates.y);
+
+    
 
 
     glm::vec3 color_low_left = _mipmap[level][linearize2DCoordinates((unsigned int) x_low, (unsigned int) y_low, width)];
