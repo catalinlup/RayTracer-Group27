@@ -182,8 +182,8 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 #else
 		
 		// m: how meny rigns, n how meny rays per ring
-		int m = rayCount/std::round(std::sqrt(2 * 3.14159365358979f * rayCount));
-		int n = rayCount / m;
+		int m = std::max(1, (int)(rayCount/std::round(std::sqrt(2 * 3.14159365358979f * rayCount))));
+		int n = (rayCount-1) / m;
 		rayCount = m * n + 1;
 
 		// thare are n rayes that go to the edge of the circle
