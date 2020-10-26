@@ -190,7 +190,10 @@ glm::vec3 calcColor(Lighting light, Material material) {
 	// difuse light
 	glm::vec3 diffuse = material.kd * light.color * light.intensity * light.cosLightSurfaceAngle;
 	//specular light
-	glm::vec3 spec = light.color * material.ks * std::pow(light.cosLightSpecAngle, material.shininess);
+	glm::vec3 spec = glm::vec3(0);
+	if (material.shininess > 0) {
+		spec = light.color * material.ks * std::pow(light.cosLightSpecAngle, material.shininess);
+	}
 	return diffuse + spec;
 }
 
@@ -210,7 +213,6 @@ static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh,
 
 		tranfer_and_reflect_ray_differentials(ray, hitInfo);
 
-		drawRay(ray, glm::vec3(1));
 		glm::vec3 color(0);
 
 		glm::vec3 reflect = glm::reflect(glm::normalize(ray.direction), glm::normalize(hitInfo.normal));
@@ -322,7 +324,6 @@ static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh,
 							reflectColor += ctmp;
 						}
 					}
-					//std::cout << "r_final: " << (glossColor / (float)glossrays).r << std::endl;
 					color += matForRendering.ks * reflectColor / (float)glossy_ray_count;
 				}
 				else {
@@ -341,7 +342,7 @@ static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh,
 
 			// calculate the refraction direction
 			glm::vec3 l = glm::normalize(ray.direction);
-			glm::vec3& n = hitInfo.normal;
+			glm::vec3 n = glm::normalize(hitInfo.normal);
 
 			float r = refraction_factor; // n1/n2 : indexes of refraction
 			float c = std::abs(glm::dot(l, n));
@@ -357,24 +358,14 @@ static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh,
 			// simplified fersnel equasion
 			float reflectionChance = R0 + (1-R0)*(std::pow(1-c,5));
 			float refractionChance = 1 - reflectionChance;
-			
 
 			// get the color the reflected and refrected rays see
 			color += reflectionChance * getFinalColor(scene, bvh, { hitInfo.hitPoint + 0.01f * reflect, reflect }, level + 1);
 			if (r * r * (1 - c * c) <= 1.0f) { // check if total internal reflection occures
 				color += refractionChance * getFinalColor(scene, bvh, { hitInfo.hitPoint + 0.01f * refract, refract }, level + 1);
 			}
-
-		// calculate reflected light
-			if (matForRendering.ks.x > 0 || matForRendering.ks.y > 0 || matForRendering.ks.z > 0)
-			{
-				// the ( + 0.01f * reflect ) is to prevent a surface reflecting itself
-				Ray refRay = {hitInfo.hitPoint + 0.01f * reflect, reflect};
-				// Calculate the color that is reflected
-				glm::vec3 refection = matForRendering.ks * getFinalColor(scene, bvh, refRay, level + 1);
-				color += refection;
-			}
 		}
+		drawRay(ray, color);
 		return color;
 	}
 	// if the ray did not hit anything
