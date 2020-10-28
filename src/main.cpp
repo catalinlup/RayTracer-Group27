@@ -381,17 +381,19 @@ static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh,
 static void setOpenGLMatrices(const Trackball& camera);
 static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
 
-
+//glm::vec2 getPositionInPixel() {
+//
+//}
 
 // This is the main rendering function. You are free to change this function in any way (including the function signature).
 // if texture debugging is set to true, the method will call the getFinalColorNoRayTracingJustTextures, instead of getFinalColor.
-static void renderRayTracing(Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen, bool textureDebugging = false, bool anti_aliasing = false)
-{
-ProgressIndicator indicator;
-int pixelCount = 0;
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
+static void renderRayTracing(Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen,
+							bool textureDebugging = false, bool anti_aliasing = false) {
+	ProgressIndicator indicator;
+	int pixelCount = 0;
+	#ifdef USE_OPENMP
+	#pragma omp parallel for
+	#endif
 	for (int y = 0; y < windowResolution.y; y++) {
 		for (int x = 0; x != windowResolution.x; x++) {
 			// NOTE: (-1, -1) at the bottom left of the screen, (+1, +1) at the top right of the screen.
@@ -405,8 +407,8 @@ int pixelCount = 0;
 			else {
 				if (anti_aliasing) {
 					//get half a pixel's worth of offset depending on the window resolution
-					float offsetX = 1.0f / windowResolution.x;
-					float offsetY = 1.0f / windowResolution.y;
+					float offsetX = 1.0f / windowResolution.x * 0.5f;
+					float offsetY = 1.0f / windowResolution.y * 0.5f;
 
 					std::array <glm::vec2, 4> offsets; // calculate quadrant offsets for each pixel
 					offsets[0] = (glm::vec2(normalizedPixelPos.x - offsetX, normalizedPixelPos.y + offsetY)); // - + top-left quadrant
@@ -414,7 +416,7 @@ int pixelCount = 0;
 					offsets[2] = (glm::vec2(normalizedPixelPos.x - offsetX, normalizedPixelPos.y - offsetY)); // - - bottom-left quadrant
 					offsets[3] = (glm::vec2(normalizedPixelPos.x + offsetX, normalizedPixelPos.y - offsetY)); // + - bottom-right quadrant
 
-					glm::vec3 avgColor; 
+					glm::vec3 avgColor;
 					for (int i = 0; i < 4; i++) { //get color values for each pixel offset
 						Ray ray = camera.generateRay(offsets[i]);
 						avgColor += getFinalColor(scene, bvh, ray);
@@ -472,9 +474,11 @@ int main(int argc, char** argv)
 	float sigma = 2.0f;
 	int kernel_num_repetitions = 1;
 
+	// Anti-Alising toggle
 	bool anti_aliasing = false;
 	
-
+	// Multiple ray casting toggle
+	bool multipleRays = false;
 
 	
 
@@ -539,7 +543,7 @@ int main(int argc, char** argv)
             {
                 using clock = std::chrono::high_resolution_clock;
                 const auto start = clock::now();
-                renderRayTracing(scene, camera, bvh, screen);
+                renderRayTracing(scene, camera, bvh, screen, false, anti_aliasing);
                 const auto end = clock::now();
                 std::cout << "Time to render image: " << std::chrono::duration<float, std::milli>(end - start).count() << " milliseconds" << std::endl;
             }
