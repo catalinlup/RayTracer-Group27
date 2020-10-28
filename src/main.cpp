@@ -13,6 +13,7 @@
 DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/vec2.hpp>
+#include <glm/gtx/component_wise.hpp>
 #include <glm/vec4.hpp>
 #include <imgui.h>
 DISABLE_WARNINGS_POP()
@@ -380,17 +381,19 @@ static glm::vec3 getFinalColor(Scene& scene, const BoundingVolumeHierarchy& bvh,
 static void setOpenGLMatrices(const Trackball& camera);
 static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
 
-
+//glm::vec2 getPositionInPixel() {
+//
+//}
 
 // This is the main rendering function. You are free to change this function in any way (including the function signature).
 // if texture debugging is set to true, the method will call the getFinalColorNoRayTracingJustTextures, instead of getFinalColor.
-static void renderRayTracing(Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen, bool textureDebugging = false)
-{
-ProgressIndicator indicator;
-int pixelCount = 0;
-#ifdef USE_OPENMP
-#pragma omp parallel for
-#endif
+static void renderRayTracing(Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen,
+							bool textureDebugging = false, bool anti_aliasing = false) {
+	ProgressIndicator indicator;
+	int pixelCount = 0;
+	#ifdef USE_OPENMP
+	#pragma omp parallel for
+	#endif
 	for (int y = 0; y < windowResolution.y; y++) {
 		for (int x = 0; x != windowResolution.x; x++) {
 			// NOTE: (-1, -1) at the bottom left of the screen, (+1, +1) at the top right of the screen.
@@ -401,9 +404,31 @@ int pixelCount = 0;
 			const Ray cameraRay = camera.generateRay(normalizedPixelPos);
 			if (textureDebugging)
 				screen.setPixel(x, y, getFinalColorNoRayTracingJustTextures(scene, bvh, cameraRay));
-			else
-				screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay));
-			
+			else {
+				if (anti_aliasing) {
+					//get half a pixel's worth of offset depending on the window resolution
+					float offsetX = 1.0f / windowResolution.x * 0.5f;
+					float offsetY = 1.0f / windowResolution.y * 0.5f;
+
+					std::array <glm::vec2, 4> offsets; // calculate quadrant offsets for each pixel
+					offsets[0] = (glm::vec2(normalizedPixelPos.x - offsetX, normalizedPixelPos.y + offsetY)); // - + top-left quadrant
+					offsets[1] = (glm::vec2(normalizedPixelPos.x + offsetX, normalizedPixelPos.y + offsetY)); // + + top-right quadrant
+					offsets[2] = (glm::vec2(normalizedPixelPos.x - offsetX, normalizedPixelPos.y - offsetY)); // - - bottom-left quadrant
+					offsets[3] = (glm::vec2(normalizedPixelPos.x + offsetX, normalizedPixelPos.y - offsetY)); // + - bottom-right quadrant
+
+					glm::vec3 avgColor;
+					for (int i = 0; i < 4; i++) { //get color values for each pixel offset
+						Ray ray = camera.generateRay(offsets[i]);
+						avgColor += getFinalColor(scene, bvh, ray);
+					}
+					avgColor *= 0.25; // divide by the number of quadrants to get the average color for that pixel
+					screen.setPixel(x, y, avgColor);
+				}
+				else {
+					screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay)); //anti-aliasing off 
+				}
+			}
+		
 			pixelCount++;
 			indicator.setProgress(pixelCount);
 		}
@@ -449,9 +474,11 @@ int main(int argc, char** argv)
 	float sigma = 2.0f;
 	int kernel_num_repetitions = 1;
 
-
+	// Anti-Alising toggle
+	bool anti_aliasing = false;
 	
-
+	// Multiple ray casting toggle
+	bool multipleRays = false;
 
 	
 
@@ -516,7 +543,7 @@ int main(int argc, char** argv)
             {
                 using clock = std::chrono::high_resolution_clock;
                 const auto start = clock::now();
-                renderRayTracing(scene, camera, bvh, screen);
+                renderRayTracing(scene, camera, bvh, screen, false, anti_aliasing);
                 const auto end = clock::now();
                 std::cout << "Time to render image: " << std::chrono::duration<float, std::milli>(end - start).count() << " milliseconds" << std::endl;
             }
@@ -543,6 +570,9 @@ int main(int argc, char** argv)
 
 		screen.enableGammaCorrection(gammaCorrection);
 		screen.setGammaValue(gammaValue);
+
+		//Anti-Aliasing
+		ImGui::Checkbox("Anti-Aliasing", &anti_aliasing);
 
 		if(ImGui::TreeNode("Bloom Filtering Settings")) {
 			
@@ -727,7 +757,7 @@ int main(int argc, char** argv)
         case ViewMode::RayTracing: {
 			if(rayTracing_toBeRendered) {
 				screen.clear(glm::vec3(0.0f));
-				renderRayTracing(scene, camera, bvh, screen);
+				renderRayTracing(scene, camera, bvh, screen, false, anti_aliasing);
 				rayTracing_toBeRendered = false;
 			}
 			screen.setPixel(0, 0, glm::vec3(1.0f));
