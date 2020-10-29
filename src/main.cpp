@@ -67,7 +67,8 @@ bool rayTracing_toBeRendered = true;
 enum class ViewMode {
 	Rasterization = 0,
 	RayTracing = 1,
-	Textures = 2
+	Textures = 2,
+	MultipleRayDebug = 3
 };
 
 
@@ -384,6 +385,7 @@ static void renderOpenGL(const Scene& scene, const Trackball& camera, int select
 // Subdivide the pixel according to the given sampleSize
 // Returns a vector of the centers of every one of the subdivisions
 std::vector<glm::vec2> getPixelRays(glm::vec2 pixelCenter, int sampleSize) {
+
 	float offsetX = (1.0f / windowResolution.x) * (1.0f / (glm::sqrt(sampleSize) * 2));
 	float offsetY = (1.0f / windowResolution.y) * (1.0f / (glm::sqrt(sampleSize) * 2));
 
@@ -516,7 +518,7 @@ int main(int argc, char** argv)
 	// Multiple ray casting settings
 	bool multipleRays = false;
 	int sampleSize = 4;
-
+	std::vector<Ray> debugRays;
 
     window.registerKeyCallback([&](int key, int /* scancode */, int action, int /* mods */) {
         if (action == GLFW_PRESS) {
@@ -525,7 +527,17 @@ int main(int argc, char** argv)
                 // Shoot a ray. Produce a ray from camera to the far plane.
                 const auto tmp = window.getNormalizedCursorPos();
                 optDebugRay = camera.generateRay(tmp * 2.0f - 1.0f);
-                viewMode = ViewMode::Rasterization;
+				if (multipleRays) { //if multiple rays is turned on
+					debugRays.clear();
+					std::vector<glm::vec2> origins = getPixelRays(tmp * 2.0f - 1.0f, sampleSize);
+					for (auto& origin : origins) {
+						debugRays.push_back(camera.generateRay(origin));
+					}
+					viewMode = ViewMode::MultipleRayDebug;
+				}
+				else {
+					viewMode = ViewMode::Rasterization;
+				}
             } break;
             case GLFW_KEY_ESCAPE: {
                 window.close();
@@ -569,7 +581,7 @@ int main(int argc, char** argv)
 			}
 		}
         {
-            constexpr std::array items { "Rasterization", "Ray Traced", "Textures" };
+            constexpr std::array items { "Rasterization", "Ray Traced", "Textures" , "Multiple Ray Debug"};
             ImGui::Combo("View mode", reinterpret_cast<int*>(&viewMode), items.data(), int(items.size()));
         }
 
@@ -823,6 +835,21 @@ int main(int argc, char** argv)
 			}
 			screen.setPixel(0, 0, glm::vec3(1.0f));
 			screen.draw(); // Takes the image generated using ray tracing and outputs it to the screen using OpenGL.
+		} break;
+		case ViewMode::MultipleRayDebug: {
+			glPushAttrib(GL_ALL_ATTRIB_BITS);
+			renderOpenGL(scene, camera, selectedLight);
+			if (optDebugRay) {
+				// Call getFinalColor for the debug ray. Ignore the result but tell the function that it should
+				// draw the rays instead.
+				for (auto& ray : debugRays) {
+					enableDrawRay = true;
+					(void)getFinalColor(scene, bvh, ray);
+					enableDrawRay = false;
+				}
+			}
+
+			glPopAttrib();
 		} break;
         default:
             break;
