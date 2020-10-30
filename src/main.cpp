@@ -72,84 +72,6 @@ enum class ViewMode {
 };
 
 
-
-bool checkShadow(HitInfo hitInfo, PointLight light, const BoundingVolumeHierarchy& bvh) {
-	Ray testRay;
-	HitInfo old = hitInfo;
-	testRay.origin = old.hitPoint;
-	glm::vec3 direction = light.position - old.hitPoint;
-	testRay.direction = glm::normalize(direction);
-	if (bvh.intersect(testRay, hitInfo, useBVH)) {
-		glm::vec3 t = (hitInfo.hitPoint - testRay.origin) / direction;
-		if (glm::all(glm::greaterThan(t, glm::vec3(0))) && glm::all(glm::lessThan(t, glm::vec3(1)))) {
-			drawRay(testRay, glm::vec3(1, 0, 0));
-			return false;
-		}
-	}
-	drawRay(testRay, glm::vec3(1, 1, 0));
-	return true;
-}
-
-glm::vec3 calcSpecular(int level, const BoundingVolumeHierarchy& bvh, PointLight light, Ray ray, HitInfo hitInfo, glm::vec3 cameraPos, Scene& scene) {
-	glm::vec3 lightDir = glm::normalize(light.position - hitInfo.hitPoint);
-	glm::vec3 resColor(0);
-	//Check if the intersecting surface has a non black Ks value and that we haven't passed the relfected ray count
-	if (glm::all(glm::notEqual(hitInfo.getMaterial(scene).ks, glm::vec3(0))) && level > 0) {
-		if (checkShadow(hitInfo, light, bvh)) {
-			glm::vec3 reflectedLight = 2 * glm::dot(lightDir, hitInfo.normal) * hitInfo.normal - lightDir;
-			glm::vec3 viewDir = glm::normalize(cameraPos - hitInfo.hitPoint);
-
-			resColor = hitInfo.getMaterial(scene).ks * light.color * glm::pow(glm::dot(glm::normalize(reflectedLight), viewDir), hitInfo.getMaterial(scene).shininess);
-
-			//Keep the old hitInfo in case the reflected ray has no further intersections
-			HitInfo old = hitInfo;
-
-			Ray reflectedRay;
-			reflectedRay.origin = old.hitPoint;
-			reflectedRay.direction = 2 * glm::dot(old.normal, viewDir) * old.normal - viewDir;
-
-			Ray normalRay;
-			normalRay.origin = old.hitPoint;
-			normalRay.direction = old.normal;
-
-			Ray lightRay;
-			lightRay.origin = old.hitPoint;
-			lightRay.direction = lightDir;
-
-			if (bvh.intersect(reflectedRay, hitInfo, useBVH)) {
-				//std::cout << "Refl Hit" << std::endl;
-				drawRay(reflectedRay, glm::vec3(1));
-				//drawRay(normalRay, glm::vec3(1, 0, 0));
-				level--;
-				resColor += calcSpecular(level, bvh, light, reflectedRay, hitInfo, cameraPos, scene);
-			}
-			else {
-				//Restore old hitInfo because there was no hit
-				hitInfo = old;
-				//std::cout << "No Hit" << std::endl;
-				drawRay(reflectedRay, glm::vec3(1));
-				//Stop the recursion
-				level = 0;
-				return resColor;
-			}
-		}
-		//Point in shadow skip computations
-		else {
-			return resColor;
-		}
-	}
-	//Black specularity return 0 vector back
-	else {
-		
-		return glm::vec3(0);
-	}
-
-}
-
-
-
-
-
 // used for debugging the textures
 static glm::vec3 getFinalColorNoRayTracingJustTextures(Scene &scene, const BoundingVolumeHierarchy &bvh, Ray ray) {
 	HitInfo hitInfo;
@@ -568,7 +490,8 @@ int main(int argc, char** argv)
         // === Setup the UI ===
         ImGui::Begin("Final Project - Part 2");
         {
-			constexpr std::array items{"SingleTriangle", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey", "Teapot", "Dragon", /* "AABBs",*/ "Spheres", "Chess", "Chess2", /*"Mixed",*/ "Custom"};
+			constexpr std::array items{"SingleTriangle", "Bookshelf", "Cube", "Cornell Box (with mirror)", "Cornell Box (spherical light and mirror)", "Cornell Box (plane light and mirror)", "Monkey",
+				"Teapot", "Dragon", "Spheres", "Chess", "Custom", "AndreasScene", "CatalinScene", "MikeScene", "MikeScene2"};
 			if (ImGui::Combo("Scenes", reinterpret_cast<int *>(&sceneType), items.data(), int(items.size())))
 			{
 				optDebugRay.reset();

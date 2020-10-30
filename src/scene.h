@@ -14,6 +14,7 @@ DISABLE_WARNINGS_POP()
 enum SceneType
 {
     SingleTriangle,
+    Bookeshelf,
     Cube,
     CornellBox,
     CornellBoxSphericalLight,
@@ -24,9 +25,12 @@ enum SceneType
     //AABBs,
     Spheres,
     ChessBoard,
-    ChessBoard2,
     //Mixed,
-    Custom
+    Custom,
+    AndreasScene,
+    CatalinScene,
+    MikeScene,
+    MikeScene2
 };
 
 struct Plane
