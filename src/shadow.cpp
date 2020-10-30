@@ -110,6 +110,11 @@ std::vector<Lighting> getPointLights(const HitInfo& point, const glm::vec3 refle
 	// check if the point can see any light
 	for (const PointLight& light : scene.pointLights) {
 		float intensity = 1.0f;
+
+
+		//std::cout << "norm" << point.normal.x << ", " << point.normal.y << ", " << point.normal.z << " len " << glm::length(point.normal) << std::endl;
+		//drawRay({ point.hitPoint, point.normal, 1 }, {0,0,1});
+
 		// the ray hit nothing or the hit was only after the light
 		if (cansee(point.hitPoint, light.position, intensity, scene, bvh)) {
 			// store the light scources that we can see
@@ -117,7 +122,7 @@ std::vector<Lighting> getPointLights(const HitInfo& point, const glm::vec3 refle
 			l.color = light.color;
 			l.position = light.position;
 			l.intensity = intensity;
-			l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
+			l.cosLightSurfaceAngle = glm::abs((glm::dot(glm::normalize(point.normal), glm::normalize(light.position - point.hitPoint))));
 			l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
 			visibleLights.push_back(l);
 		}
@@ -211,7 +216,7 @@ std::vector<Lighting> getSpherelights(const HitInfo& point, const glm::vec3& ref
 			l.color = light.color;
 			l.intensity = intensitySum / (float)(rayCount);
 			l.position = light.position;
-			l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
+			l.cosLightSurfaceAngle = std::abs(glm::dot(glm::normalize(point.normal), glm::normalize(light.position - point.hitPoint)));
 			l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
 			lights.push_back(l);
 
@@ -236,7 +241,7 @@ std::vector<Lighting> getSpotLichts(const HitInfo& point, const glm::vec3& refle
 				l.color = light.color;
 				l.position = light.position;
 				l.intensity = intensity;
-				l.cosLightSurfaceAngle = std::max(0.0f, glm::dot(point.normal, glm::normalize(light.position - point.hitPoint)));
+				l.cosLightSurfaceAngle = std::abs(glm::dot(glm::normalize(point.normal), glm::normalize(light.position - point.hitPoint)));
 				l.cosLightSpecAngle = std::max(0.0f, glm::dot(glm::normalize(reflectdir), glm::normalize(light.position - point.hitPoint)));
 				lights.push_back(l);
 			}
