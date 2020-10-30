@@ -13,6 +13,7 @@ Scene loadScene(SceneType type, const std::filesystem::path &dataDir)
         subMeshes[0].material.kd = glm::vec3(1.0f);
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
         scene.pointLights.push_back(PointLight{glm::vec3(-1, 1, -1), glm::vec3(1)});
+        scene.sphericalLight.push_back(SphericalLight{ glm::vec3(-2.1f, 1.24f, -0.51f), 0.5f, glm::vec3(1.0f, 0.0f, 1.0f) });
     }
     break;
     case Cube:
