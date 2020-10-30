@@ -1,5 +1,6 @@
 #pragma once
 #include "disable_all_warnings.h"
+#include "image.h"
 // Suppress warnings in third-party code.
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
@@ -7,24 +8,32 @@ DISABLE_WARNINGS_PUSH()
 #include <gsl-lite/gsl-lite.hpp>
 DISABLE_WARNINGS_POP()
 #include <filesystem>
+#include <optional>
 #include <vector>
 
-struct Vertex {
+struct Vertex
+{
     glm::vec3 p; // Position.
     glm::vec3 n; // Normal.
+    glm::vec2 texCoord;
 };
 
-struct Material {
+struct Material
+{
     glm::vec3 kd; // Diffuse color.
-    glm::vec3 ks { 0.0f };
-    float shininess { 1.0f };
+    glm::vec3 ks{0.0f};
+    float shininess{1.0f};
 
-    float transparency { 1.0f };
+    float transparency{1.0f};
+
+    std::optional<Image> kdTexture;
+
 };
 
 using Triangle = glm::uvec3;
 
-struct Mesh {
+struct Mesh
+{
     // Vertices contain the vertex positions and normals of the mesh.
     std::vector<Vertex> vertices;
     // Triangles are the indices of the vertices involved in a triangle.
@@ -34,4 +43,4 @@ struct Mesh {
     Material material;
 };
 
-[[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);
+[[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path &file, bool normalize = false);

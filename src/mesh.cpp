@@ -20,7 +20,7 @@ DISABLE_WARNINGS_POP()
 #include <string>
 #include <tuple>
 
-static glm::mat4 assimpMatrix(const aiMatrix4x4& m)
+static glm::mat4 assimpMatrix(const aiMatrix4x4 &m)
 {
     //float values[3][4] = {};
     glm::mat4 matrix;
@@ -43,56 +43,62 @@ static glm::mat4 assimpMatrix(const aiMatrix4x4& m)
     return matrix;
 }
 
-static glm::vec3 assimpVec(const aiVector3D& v)
+static glm::vec3 assimpVec(const aiVector3D &v)
 {
     return glm::vec3(v.x, v.y, v.z);
 }
 
-static glm::vec3 assimpVec(const aiColor3D& c)
+static glm::vec3 assimpVec(const aiColor3D &c)
 {
     return glm::vec3(c.r, c.g, c.b);
 }
 
 static void centerAndScaleToUnitMesh(gsl::span<Mesh> meshes);
 
-std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool centerAndNormamlize)
+std::vector<Mesh> loadMesh(const std::filesystem::path &file, bool centerAndNormamlize)
 {
-    if (!std::filesystem::exists(file)) {
+    if (!std::filesystem::exists(file))
+    {
         std::cerr << "File " << file << " does not exist." << std::endl;
         throw std::exception();
     }
 
     Assimp::Importer importer;
-    const aiScene* pAssimpScene = importer.ReadFile(file.string().c_str(), aiProcess_GenNormals | aiProcess_Triangulate);
+    const aiScene *pAssimpScene = importer.ReadFile(file.string().c_str(), aiProcess_GenNormals | aiProcess_Triangulate);
 
-    if (pAssimpScene == nullptr || pAssimpScene->mRootNode == nullptr || pAssimpScene->mFlags == AI_SCENE_FLAGS_INCOMPLETE) {
+    if (pAssimpScene == nullptr || pAssimpScene->mRootNode == nullptr || pAssimpScene->mFlags == AI_SCENE_FLAGS_INCOMPLETE)
+    {
         std::cerr << "Assimp failed to load mesh file " << file << std::endl;
         throw std::exception();
     }
 
     std::vector<Mesh> out;
 
-    std::stack<std::tuple<aiNode*, glm::mat4>> stack;
-    stack.push({ pAssimpScene->mRootNode, assimpMatrix(pAssimpScene->mRootNode->mTransformation) });
-    while (!stack.empty()) {
+    std::stack<std::tuple<aiNode *, glm::mat4>> stack;
+    stack.push({pAssimpScene->mRootNode, assimpMatrix(pAssimpScene->mRootNode->mTransformation)});
+    while (!stack.empty())
+    {
         auto [node, matrix] = stack.top();
         stack.pop();
 
         matrix *= assimpMatrix(node->mTransformation);
         const glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(matrix));
 
-        for (unsigned i = 0; i < node->mNumMeshes; i++) {
+        for (unsigned i = 0; i < node->mNumMeshes; i++)
+        {
             // Process sub mesh.
-            const aiMesh* pAssimpMesh = pAssimpScene->mMeshes[node->mMeshes[i]];
+            const aiMesh *pAssimpMesh = pAssimpScene->mMeshes[node->mMeshes[i]];
 
             if (pAssimpMesh->mNumVertices == 0 || pAssimpMesh->mNumFaces == 0)
                 std::cerr << "Empty mesh encountered" << std::endl;
 
             // Process triangles in sub mesh.
             Mesh mesh;
-            for (unsigned j = 0; j < pAssimpMesh->mNumFaces; j++) {
-                const aiFace& face = pAssimpMesh->mFaces[j];
-                if (face.mNumIndices != 3) {
+            for (unsigned j = 0; j < pAssimpMesh->mNumFaces; j++)
+            {
+                const aiFace &face = pAssimpMesh->mFaces[j];
+                if (face.mNumIndices != 3)
+                {
                     std::cerr << "Found a face which is not a triangle, discarding!" << std::endl;
                 }
 
@@ -101,25 +107,39 @@ std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool centerAndNorm
             }
 
             // Process vertices in sub mesh.
-            for (unsigned j = 0; j < pAssimpMesh->mNumVertices; j++) {
+            for (unsigned j = 0; j < pAssimpMesh->mNumVertices; j++)
+            {
                 const glm::vec3 pos = matrix * glm::vec4(assimpVec(pAssimpMesh->mVertices[j]), 1.0f);
                 const glm::vec3 normal = normalMatrix * assimpVec(pAssimpMesh->mNormals[j]);
-                mesh.vertices.push_back(Vertex { pos, normal });
+                glm::vec2 texCoord{0.0f};
+                if (pAssimpMesh->mTextureCoords[0])
+                {
+                    texCoord = assimpVec(pAssimpMesh->mTextureCoords[0][j]);
+                }
+                mesh.vertices.push_back(Vertex{pos, normal, texCoord});
             }
 
             // Read the material, more info can be found here:
             // http://assimp.sourceforge.net/lib_html/materials.html
-            const aiMaterial* pAssimpMaterial = pAssimpScene->mMaterials[pAssimpMesh->mMaterialIndex];
-            auto getMaterialColor = [&](const char* pKey, unsigned type, unsigned idx) {
+            const aiMaterial *pAssimpMaterial = pAssimpScene->mMaterials[pAssimpMesh->mMaterialIndex];
+            auto getMaterialColor = [&](const char *pKey, unsigned type, unsigned idx) {
                 aiColor3D color(0.f, 0.f, 0.f);
                 pAssimpMaterial->Get(pKey, type, idx, color);
                 return assimpVec(color);
             };
-            auto getMaterialFloat = [&](const char* pKey, unsigned type, unsigned idx) {
+            auto getMaterialFloat = [&](const char *pKey, unsigned type, unsigned idx) {
                 float value;
                 pAssimpMaterial->Get(pKey, type, idx, value);
                 return value;
             };
+
+            aiString relativeTexturePath;
+            if (pAssimpMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &relativeTexturePath) == AI_SUCCESS)
+            {
+                std::filesystem::path textureBasePath = std::filesystem::absolute(file).parent_path();
+                std::filesystem::path absoluteTexturePath = textureBasePath / std::filesystem::path(relativeTexturePath.C_Str());
+                mesh.material.kdTexture = Image(absoluteTexturePath);
+            }
 
             mesh.material.kd = getMaterialColor(AI_MATKEY_COLOR_DIFFUSE);
             mesh.material.ks = getMaterialColor(AI_MATKEY_COLOR_SPECULAR);
@@ -128,8 +148,9 @@ std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool centerAndNorm
             out.emplace_back(std::move(mesh));
         }
 
-        for (unsigned i = 0; i < node->mNumChildren; i++) {
-            stack.push({ node->mChildren[i], matrix });
+        for (unsigned i = 0; i < node->mNumChildren; i++)
+        {
+            stack.push({node->mChildren[i], matrix});
         }
     }
     importer.FreeScene();
@@ -143,11 +164,11 @@ std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool centerAndNorm
 static void centerAndScaleToUnitMesh(gsl::span<Mesh> meshes)
 {
     std::vector<glm::vec3> positions;
-    for (const auto& mesh : meshes)
-        std::transform(std::begin(mesh.vertices), std::end(mesh.vertices), std::back_inserter(positions), [](const Vertex& v) { return v.p; });
+    for (const auto &mesh : meshes)
+        std::transform(std::begin(mesh.vertices), std::end(mesh.vertices), std::back_inserter(positions), [](const Vertex &v) { return v.p; });
     const glm::vec3 center = std::accumulate(std::begin(positions), std::end(positions), glm::vec3(0.0f)) / static_cast<float>(positions.size());
     float maxD = 0.0f;
-    for (const glm::vec3& p : positions)
+    for (const glm::vec3 &p : positions)
         maxD = std::max(glm::length(p - center), maxD);
     /*// REQUIRES A MODERN COMPILER
 	const float maxD = std::transform_reduce(
@@ -156,11 +177,12 @@ static void centerAndScaleToUnitMesh(gsl::span<Mesh> meshes)
 		[](float lhs, float rhs) { return std::max(lhs, rhs); },
 		[=](const Vertex& v) { return glm::length(v.pos - center); });*/
 
-    for (auto& mesh : meshes) {
+    for (auto &mesh : meshes)
+    {
         std::transform(std::begin(mesh.vertices), std::end(mesh.vertices), std::begin(mesh.vertices),
-            [=](Vertex v) {
-                v.p = (v.p - center) / maxD;
-                return v;
-            });
+                       [=](Vertex v) {
+                           v.p = (v.p - center) / maxD;
+                           return v;
+                       });
     }
 }

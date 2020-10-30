@@ -1,3 +1,4 @@
+
 #pragma once
 #include "disable_all_warnings.h"
 #include "mesh.h"
@@ -10,44 +11,75 @@ DISABLE_WARNINGS_POP()
 #include <optional>
 #include <vector>
 
-enum SceneType {
+enum SceneType
+{
     SingleTriangle,
+    Bookeshelf,
     Cube,
     CornellBox,
     CornellBoxSphericalLight,
+    CornellBoxPlaneLight,
     Monkey,
+    Teapot,
     Dragon,
     //AABBs,
     Spheres,
+    ChessBoard,
     //Mixed,
-    Custom
+    Custom,
+    AndreasScene,
+    CatalinScene,
+    MikeScene,
+    MikeScene2
 };
 
-struct Plane {
+struct Plane
+{
     float D = 0.0f;
-    glm::vec3 normal { 0.0f, 1.0f, 0.0f };
+    glm::vec3 normal{0.0f, 1.0f, 0.0f};
 };
 
-struct AxisAlignedBox {
-    glm::vec3 lower { 0.0f };
-    glm::vec3 upper { 1.0f };
+struct AxisAlignedBox
+{
+    glm::vec3 lower{0.0f};
+    glm::vec3 upper{1.0f};
 };
 
-struct Sphere {
-    glm::vec3 center { 0.0f };
+struct Sphere
+{
+    glm::vec3 center{0.0f};
     float radius = 1.0f;
     Material material;
 };
 
-struct PointLight {
+struct PointLight
+{
     glm::vec3 position;
     glm::vec3 color;
 };
 
-struct SphericalLight {
+struct SphericalLight
+{
     glm::vec3 position;
     float radius;
     glm::vec3 color;
+};
+
+struct SpotLight {
+    glm::vec3 position;
+    glm::vec3 direction;
+    float angle;
+    glm::vec3 color;
+};
+
+struct PlaneLight {
+    glm::vec3 position;
+    glm::vec3 width;
+    glm::vec3 height;
+    glm::vec3 color;
+    inline glm::vec3 center() {
+        return position + 0.5f * (width + height);
+    }
 };
 
 struct Scene {
@@ -57,7 +89,10 @@ struct Scene {
 
     std::vector<PointLight> pointLights;
     std::vector<SphericalLight> sphericalLight;
+    std::vector<PlaneLight> planeLight;
+    std::vector<SpotLight> spotLight;
 };
 
 // Load a prebuilt scene.
-Scene loadScene(SceneType type, const std::filesystem::path& dataDir);
+Scene loadScene(SceneType type, const std::filesystem::path &dataDir);
+
