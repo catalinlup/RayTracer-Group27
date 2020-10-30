@@ -1,4 +1,5 @@
 #include "ray_tracing.h"
+#include "draw.h"
 #include "disable_all_warnings.h"
 // Suppress warnings in third-party code.
 DISABLE_WARNINGS_PUSH()
@@ -148,9 +149,16 @@ bool intersectRayWithTriangleWithInterpolation(const Vertex& v0, const Vertex& v
         barycentricCoordinates(v0.p, v1.p, v2.p, hitInfo.hitPoint, barCoords);
 
         // INTERPOLATION OF THE NORMALS
+        glm::vec3 facenormal = hitInfo.normal;
+        //drawRay({ v0.p, v0.n, 0.1f }, glm::vec3(0, 0, 1));
+        //drawRay({ v1.p, v1.n, 0.1f }, glm::vec3(0, 0, 1));
+        //drawRay({ v2.p, v2.n, 0.1f }, glm::vec3(0, 0, 1));
         std::array<glm::vec3, 3> normals {v0.n, v1.n, v2.n};
         hitInfo.normal = interpolateProperty(barCoords, normals);
-
+        if (glm::dot(hitInfo.normal, facenormal) < 0) {
+            hitInfo.normal = -hitInfo.normal;
+        }
+        //drawRay({ hitInfo.hitPoint, hitInfo.normal, 0.2f }, glm::vec3(0, 1, 1));
         // update the 
 
 
