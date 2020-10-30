@@ -502,10 +502,10 @@ bool Image::getBestLevelMipmap(unsigned int &best_level, float lod, unsigned int
     if (mode == 0) {
         // if lod is closer to the floor than to the ceil, return the floor, else return the ceil
         if(lod - floor(lod) < ceil(lod) - lod) {
-            best_level = (int) glm::max(0.0f, floor(lod));
+            best_level = (int) glm::max(0.0f, (float) floor(lod));
         }
         else {
-            best_level = (int) glm::min(getNumMipmapLevels() - 1.0f, ceil(lod));
+            best_level = (int) glm::min(getNumMipmapLevels() - 1.0f, (float) ceil(lod));
         }
 
         return true;
@@ -513,13 +513,13 @@ bool Image::getBestLevelMipmap(unsigned int &best_level, float lod, unsigned int
     }
     // best high resolution
     else if (mode == 1) {
-        best_level = (int)glm::min(getNumMipmapLevels() - 1.0f, ceil(lod));
+        best_level = (int)glm::min(getNumMipmapLevels() - 1.0f, (float) ceil(lod));
 
         return true;
     }
     // best low resolution
     else if (mode == 2){
-        best_level = (int)glm::max(0.0f, floor(lod));
+        best_level = (int)glm::max(0.0f, (float) floor(lod));
 
         return true;
     }
